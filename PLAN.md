@@ -52,7 +52,7 @@ Hidden demo controls (work anywhere in the dev window, also in the Command Palet
 | `demo/two_sum.py` | The file we "code" in during the demo |
 
 ## Stage order
-`character → analyzing → sprite → circle → oneLeg → twoLegs → mouth → eyes → inspect → coding → highFive → done`
+`title → character → analyzing → sprite → circle → oneLeg → twoLegs → mouth → eyes → inspect → coding → highFive → done`
 
 ## Phases
 
@@ -63,6 +63,9 @@ Hidden demo controls (work anywhere in the dev window, also in the Command Palet
 - [x] Hand-drawn font bundled, wobbly per-letter lettering, colors in CSS variables
 
 ### Phase 2 — Onboarding ✅
+- [x] Title card: "doodle in distress" writes itself on letter by letter and underlines itself, subtitle
+      "a coding companion with questionable coping skills.", then a wobbly "bring yours to life →" button.
+      The panel opens itself on startup so the card plays right away.
 - [x] Q1: pick personality: Roast but helpful / Evil / Kind & supporting (all route to the same roaster)
 - [x] Fake "Analyzing personality…" progress bar (long, stalls and bursts) → "Personality locked in: passive-aggressive coworker."
 - [x] Q2: pick a preset sprite (Stickman / Blob / Ghost, show-only, just selectable) or **Draw your own** (the real path)

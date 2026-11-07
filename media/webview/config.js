@@ -3,6 +3,7 @@
 window.SIDEKICK = {
   // Fixed stage order. Ctrl+Alt+N walks this list, Ctrl+Alt+R jumps to the first entry.
   stages: [
+    'title',     // animated chalkboard title card, click to begin
     'character', // onboarding Q1: pick a personality
     'analyzing', // fake "personality engine" progress bar
     'sprite',    // onboarding Q2: pick a sprite or draw your own
@@ -27,6 +28,7 @@ window.SIDEKICK = {
   },
 
   timing: {
+    titleWriteMs: 2200,       // how long the pencil takes to "write" the title
     analyzingMs: 5200,        // total time the fake progress bar takes
     personalityLockedMs: 2600, // how long "Personality locked in" stays up
     // Fake progress bar: [fraction of time, fraction filled]. Stalls and bursts so it looks real.
@@ -197,6 +199,11 @@ window.SIDEKICK = {
   },
 
   text: {
+    title: {
+      heading: 'doodle in distress',
+      subtitle: 'a coding companion with questionable coping skills.',
+      cta: 'bring yours to life',
+    },
     character: {
       title: 'Pick your sidekick’s personality',
       options: [

@@ -56,7 +56,7 @@ class SidekickViewProvider implements vscode.WebviewViewProvider {
   private heistRequests = new Map<number, (r: HeistReply) => void>();
   private nextId = 1;
   /** Current stage as reported by the webview. Used for editor detection. */
-  stage = 'character';
+  stage = 'title';
   /** Messages the rest of the extension cares about (inspect, restoreCode, submitCode, stage). */
   onMessage?: (msg: FromWebview) => void;
 
@@ -260,10 +260,12 @@ function codeBox(req: InspectRequest) {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-  const provider = new SidekickViewProvider(context.extensionUri);
   const log = vscode.window.createOutputChannel('doodle in distress');
+  const provider = new SidekickViewProvider(context.extensionUri);
   const overlay = new Overlay(context.extensionUri, log);
   overlay.start();
+  // Open the panel on startup so the title card plays without being clicked.
+  setTimeout(() => vscode.commands.executeCommand('sidekick.view.focus'), 800);
 
   // Chat heist: we own the chat shortcut, so we know exactly when chat gets opened.
   let heistRunning = false;
