@@ -75,6 +75,43 @@ Hidden demo controls (work anywhere in the dev window, also in the Command Palet
 - [ ] Dev command to save current parts to `media/recorded-parts.json`
 - [ ] `Ctrl+Alt+P` submits recorded strokes for the current part
 
+### Phase 8.5 — Chat heist (stretch goal): pet escapes the panel and closes the AI chat
+The joke: we open VS Code's AI chat, the pet jumps out of its panel, climbs up the screen to the chat,
+slams it shut, and says "Do it yourself."
+
+**Feasibility: yes, verified.**
+- A webview can't draw outside its panel. But the extension can launch a **transparent, click-through,
+  always-on-top window** with PowerShell + WPF (built into Windows, nothing to install). Spike tested on
+  this laptop: a shape drew over VS Code and the terminal with a see-through background.
+- Opening/closing chat from the extension works via built-in commands:
+  `workbench.action.chat.open` and `workbench.action.closeAuxiliaryBar` (both confirmed present in VS Code 1.145).
+- **Catch:** extensions can't detect "chat was opened" in general (clicking the chat icon fires no
+  event). So we **own the shortcut**: our extension rebinds the chat shortcut `Ctrl+Alt+I` to our
+  command, which opens chat itself and starts the joke. In the demo we open chat with the keyboard.
+  Hidden backup key too, e.g. `Ctrl+Alt+C`.
+
+**How it works**
+1. On activation, extension spawns `media/overlay.ps1` (hidden, so there's no ~1s PowerShell startup lag later). Talks to it via
+   JSON lines on stdin: `show(png, x, y)`, `moveTo(x, y, ms)`, `say(text)`, `hide()`.
+2. Webview exports the drawn pet as a PNG (`canvas.toDataURL`) → extension → overlay.
+3. Choreography: pet jumps off the top of the panel (vanishes from webview) → appears in overlay at the
+   same screen spot → hops up to the chat → kick → extension runs `closeAuxiliaryBar` → bubble
+   "Do it yourself." → drops back down into the panel.
+
+**Tasks**
+- [ ] `media/overlay.ps1`: transparent topmost window, click-through + no focus steal
+      (`ShowActivated=false`, `WS_EX_TRANSPARENT | WS_EX_NOACTIVATE`), stdin command loop, pet image + bubble
+- [ ] Rebind `Ctrl+Alt+I` → `sidekick.chatHeist` (opens chat, runs choreography, closes chat)
+- [ ] Export pet PNG from webview
+- [ ] Screen coordinates: VS Code's API doesn't give screen positions of the window/panel/chat. Demo
+      runs maximized on one laptop, so **calibrate once** (positions in `config.js`, in Windows
+      DPI-scaled units; this laptop is ~150% scaling)
+- [ ] Fallback if overlay misbehaves live: in-panel version: pet leaps off the top of the panel, chat
+      closes, pet falls back in and says the line (config flag)
+
+**Risks:** Windows-only (fine for us); coordinate calibration on the demo machine; overlay
+must never steal focus from the editor.
+
 ### Phase 9 — Demo polish
 - [ ] Apply Figma styling
 - [ ] `DEMO.md`: exact run-through script + keybindings
@@ -82,4 +119,5 @@ Hidden demo controls (work anywhere in the dev window, also in the Command Palet
 
 ## Open questions
 - **Eyes**: the v2 stickman board has no eyes (side-view, one-line mouth), but the script has an eyes stage ("...oh. So THIS is what you look like."). Keep it, or drop it and move those lines elsewhere?
+- **Chat heist timing**: where in the story? Suggest during `coding`, before the bug: you ask the AI for help, the pet shuts it down. Then the roast lands harder.
 - **Line number**: the buggy line in `demo/two_sum.py` is actually line 9, not 10. We compute it from the document anyway.
