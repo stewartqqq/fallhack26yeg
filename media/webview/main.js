@@ -17,6 +17,8 @@
     parts: {},   // partName -> strokes (arrays of {x, y} in pad pixels)
     timers: [],  // cleared on every stage change so forced skips never leave stale callbacks
     busy: false, // true while a fake "Recognizing…" is in flight
+    petX: null,  // where the pet stands on stage (null = center); kept from wherever it last rolled to
+    bodyAngle: 0, // body rotation it ended up at after rolling, so the drawing doesn't snap back
   };
 
   function later(ms, fn) {
@@ -39,6 +41,8 @@
 
   function reset() {
     state.parts = {};
+    state.petX = null;
+    state.bodyAngle = 0;
     resetRoll();
     clearPad();
     hideToast();
@@ -342,10 +346,11 @@
     const cy = groundY - legLen - r;
     const ink = cssVar('--ink');
 
-    const place = (strokes, x, y, size, anchor, color, fill) => {
+    const place = (strokes, x, y, size, anchor, color, fill, angle = 0) => {
       const n = normalize(strokes, size, anchor);
       c.save();
       c.translate(x, y);
+      c.rotate(angle);
       if (fill) fillStrokes(c, n, fill);
       drawStrokes(c, n, color, strokeWidth);
       c.restore();
@@ -357,7 +362,7 @@
     const spread = P.leg2 ? r * CFG.pet.legSpread : 0;
     if (P.leg1) place(P.leg1, cx + spread, hipY, legLen, 'top', ink);
     if (P.leg2) place(P.leg2, cx - spread, hipY, legLen, 'top', ink);
-    if (P.body) place(P.body, cx, cy, r * 2, 'center', ink, cssVar('--bg'));
+    if (P.body) place(P.body, cx, cy, r * 2, 'center', ink, cssVar('--bg'), state.bodyAngle);
     if (P.mouth) place(P.mouth, cx + r * 0.55, cy + r * 0.15, r * 0.4, 'center', ink);
     if (P.eyes) place(P.eyes, cx + r * 0.3, cy - r * 0.3, r * 0.5, 'center', ink);
   }
@@ -476,14 +481,16 @@
       ctx.lineTo(width - 24, groundY);
       ctx.stroke();
       if (!state.petAway) {
-        // Center the pet in the free space left of the drawing card.
+        // Free space ends at the drawing card; the pet starts centered in it.
         const cardLeft = card.classList.contains('hidden') ? width : card.offsetLeft;
         // Just a circle so far (drawn, no legs yet): it rolls around.
         if (state.parts.body && !state.parts.leg1) {
           updateRoll(dt, cardLeft);
           drawRollingCircle(ctx, groundY);
+          state.petX = roll.x;
+          state.bodyAngle = roll.angle;
         } else {
-          drawPet(ctx, cardLeft / 2, groundY, CFG.pet.bodyRadius);
+          drawPet(ctx, state.petX ?? cardLeft / 2, groundY, CFG.pet.bodyRadius);
         }
       }
     }
