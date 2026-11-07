@@ -49,12 +49,13 @@
     goTo(CFG.stages[0]);
   }
 
-  const ONBOARDING = ['character', 'analyzing', 'sprite'];
+  const ONBOARDING = ['title', 'character', 'analyzing', 'sprite'];
 
   function render() {
     const s = state.stage;
     onboarding.innerHTML = '';
-    if (s === 'character') renderCharacter();
+    if (s === 'title') renderTitle();
+    else if (s === 'character') renderCharacter();
     else if (s === 'analyzing') renderAnalyzing();
     else if (s === 'sprite') renderSprite();
 
@@ -97,6 +98,144 @@
     h.className = 'ob-title';
     clumsy(h, text);
     return h;
+  }
+
+  // Chalkboard title card: the heading writes itself on letter by letter, then
+  // draws its own underline, before the subtitle and the clickable CTA fade in.
+  // CTA click advances to onboarding.
+  function renderTitle() {
+    const T0 = T.title;
+    const wrap = document.createElement('div');
+    wrap.className = 'title-stage';
+
+    const headingWrap = document.createElement('div');
+    headingWrap.className = 'title-heading-wrap';
+    const heading = document.createElement('h1');
+    heading.className = 'title-heading';
+    headingWrap.appendChild(heading);
+
+    const underline = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    underline.setAttribute('class', 'title-underline');
+    underline.setAttribute('viewBox', '0 0 600 24');
+    underline.setAttribute('preserveAspectRatio', 'none');
+    underline.innerHTML = '<path d="M4,12 Q150,2 300,12 T596,10"/>';
+    headingWrap.appendChild(underline);
+
+    const sub = document.createElement('div');
+    sub.className = 'title-sub';
+
+    const cta = document.createElement('button');
+    cta.type = 'button';
+    cta.className = 'title-cta';
+
+    wrap.append(headingWrap, sub, cta);
+    onboarding.appendChild(wrap);
+
+    const letters = clumsy(heading, T0.heading, { write: true });
+    clumsy(sub, T0.subtitle);
+    clumsy(cta, T0.cta);
+    // Text + arrow share one inner wrapper so they idle-wiggle together,
+    // independently of the button's own hover/press transform.
+    const ctaInner = cta.firstElementChild;
+    ctaInner.className = 'cta-inner';
+    ctaInner.insertAdjacentHTML('beforeend', '<span class="cta-arrow">→</span>');
+    cta.addEventListener('click', () => {
+      if (cta.classList.contains('clicking')) return;
+      cta.classList.add('clicking');
+      Sound.pop(true);
+      later(240, next);
+    });
+
+    // Wait a frame for layout (and the webfont) to settle before measuring letters.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const hwRect = headingWrap.getBoundingClientRect();
+      // Each letter's own box: it's wiped open from x0 to x1, so wider letters
+      // take proportionally longer to appear, like a real stroke.
+      const boxes = letters.map(({ el, newWord }) => {
+        const r = el.getBoundingClientRect();
+        return { el, newWord, width: r.width };
+      });
+
+      // Pace by letter width (wide letters take longer to trace) plus a small
+      // travel gap before each one — bigger between words, like lifting the pen.
+      const spans = boxes.map((b, i) => ({
+        trace: Math.max(b.width, 7),
+        gap: i === 0 ? 10 : b.newWord ? 15 : 3.5,
+      }));
+      const units = spans.reduce((a, s) => a + s.trace + s.gap, 0);
+      const perUnit = CFG.timing.titleWriteMs / Math.max(units, 1);
+      let acc = 0;
+      const sched = spans.map((s) => {
+        const gapStart = acc;
+        const traceStart = (acc += s.gap * perUnit);
+        const traceEnd = (acc += s.trace * perUnit);
+        return { gapStart, traceStart, traceEnd };
+      });
+      const writeEnd = acc;
+
+      const underlinePath = underline.querySelector('path');
+      const ulLen = Math.ceil(underlinePath.getTotalLength());
+      underlinePath.style.transition = 'none';
+      underlinePath.style.strokeDasharray = String(ulLen);
+      underlinePath.style.strokeDashoffset = String(ulLen);
+
+      const PAUSE = 260, DRAG = 700; // beat after the last letter, then the underline
+      const clamp01 = (p) => (p < 0 ? 0 : p > 1 ? 1 : p);
+      const smooth = (p) => p * p * (3 - 2 * p);
+
+      // One clock drives the whole card: no per-letter timers or restarted CSS
+      // transitions, so the reveal never stalls between letters.
+      const shown = new Array(boxes.length).fill(-1);
+      const revealLetter = (i, p) => {
+        if (p === shown[i]) return;
+        shown[i] = p;
+        const el = boxes[i].el;
+        if (p >= 1) {
+          el.style.clipPath = 'none';
+          el.style.filter = 'none';
+        } else {
+          el.style.clipPath = `inset(-30% ${((1 - p) * 100).toFixed(1)}% -30% -12%)`;
+          el.style.filter = `blur(${((1 - p) * 1.1).toFixed(2)}px)`;
+        }
+      };
+
+      let start = performance.now();
+      let finished = false;
+      function tick(now) {
+        // Bail out if the stage moved on (reset/skip) while we were animating.
+        if (!headingWrap.isConnected || state.stage !== 'title') return;
+        const t = now - start;
+
+        if (t < writeEnd) {
+          for (let i = 0; i < boxes.length; i++) {
+            const s = sched[i];
+            const span = Math.max(s.traceEnd - s.traceStart, 1);
+            revealLetter(i, clamp01((t - s.traceStart) / span));
+          }
+        } else {
+          for (let i = 0; i < boxes.length; i++) revealLetter(i, 1);
+          const a = t - writeEnd;
+          if (a >= PAUSE) {
+            const p = clamp01((a - PAUSE) / DRAG);
+            underlinePath.style.strokeDashoffset = String((ulLen * (1 - smooth(p))).toFixed(1));
+            if (p >= 1 && !finished) {
+              finished = true;
+              headingWrap.classList.add('idle'); // gentle settle wiggle once written
+              later(220, () => {
+                sub.classList.add('show');
+                later(500, () => sub.classList.add('idle'));
+              });
+              later(620, () => cta.classList.add('show'));
+              return; // animation complete, stop the loop
+            }
+          }
+        }
+        requestAnimationFrame(tick);
+      }
+
+      start = performance.now();
+      requestAnimationFrame(tick);
+    }));
   }
 
   function renderCharacter() {
@@ -164,7 +303,10 @@
   // Clumsy lettering: each letter gets a small random tilt and hop, like we
   // wrote it by hand. Seeded by the text so a label wobbles the same way every time.
   // ---------------------------------------------------------------------------
-  function clumsy(el, text) {
+  // opts.write: if set, letters start invisible/blurred (caller reveals them
+  // itself — see renderTitle) instead of appearing all at once. Returns each
+  // letter's element plus whether it starts a new word, for pacing reveals.
+  function clumsy(el, text, opts = {}) {
     let seed = 0;
     for (const ch of text) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
     const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32) * 2 - 1;
@@ -172,19 +314,29 @@
     // One inner span so spaces survive inside flex containers.
     const inner = document.createElement('span');
     el.replaceChildren(inner);
-    text.split(' ').forEach((word, i) => {
-      if (i) inner.append(' ');
+    const letters = [];
+    text.split(' ').forEach((word, wi) => {
+      if (wi) inner.append(' ');
       const w = document.createElement('span');
       w.className = 'cw';
-      for (const ch of word) {
+      [...word].forEach((ch, ci) => {
         const l = document.createElement('span');
         l.className = 'cl';
         l.textContent = ch;
         l.style.transform = `translateY(${(rand() * 1.8).toFixed(1)}px) rotate(${(rand() * 6).toFixed(1)}deg)`;
+        if (opts.write) {
+          // Clipped from the right = not drawn yet. The caller opens the clip
+          // per frame (see renderTitle) for a left-to-right wipe — no CSS
+          // transition here, it would lag a frame behind the loop.
+          l.style.clipPath = 'inset(-30% 100% -30% -12%)';
+          l.style.filter = 'blur(1.1px)';
+        }
         w.appendChild(l);
-      }
+        letters.push({ el: l, newWord: wi > 0 && ci === 0 });
+      });
       inner.appendChild(w);
     });
+    return letters;
   }
 
   // ---------------------------------------------------------------------------
@@ -862,6 +1014,7 @@
 
   document.querySelectorAll('.btn').forEach((b) => clumsy(b, b.textContent));
   clumsy($('pad-hint'), $('pad-hint').textContent);
+  // .title-cta is excluded: its own click handler plays a sound.
   document.addEventListener('pointerdown', (e) => {
     if (e.target.closest('.btn, .choice')) Sound.click();
   });

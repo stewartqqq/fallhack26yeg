@@ -7,6 +7,11 @@ window.Sound = (function () {
     return ctx;
   }
 
+  // Browsers block audio until the page has been interacted with. Nudge the
+  // context awake on the first gesture so the title card isn't silent forever.
+  const wake = () => { try { ac(); } catch (e) { /* no audio device */ } };
+  ['pointerdown', 'keydown'].forEach((e) => addEventListener(e, wake, { once: true }));
+
   // A short tone with a quick attack/decay envelope.
   function tone(freq, ms, { type = 'square', gain = 0.05, slide = 0 } = {}) {
     const c = ac();
