@@ -50,6 +50,21 @@ window.SIDEKICK = {
     legSpread: 0.3,   // with two legs: each hip sits this × bodyRadius left/right of center
   },
 
+  // Background doodles (scenery.js): decoration only, nothing interacts with the pet.
+  scenery: {
+    treeAlpha: 0.16,
+    treeHeight: [70, 150],  // px
+    treeGap: [90, 220],     // px between trees
+    cloudAlpha: 0.14,
+    clouds: 4,
+    cloudSpeed: 6,          // px/s drift
+    birdAlpha: 0.45,
+    birds: 3,
+    birdSpeed: [22, 45],    // px/s
+    grassAlpha: 0.5,
+    grassGap: [18, 60],     // px between tufts
+  },
+
   // Phase 4: once the circle is drawn (and until the first leg is), the body
   // tries to roll around. Real rolling physics: the lowest point of the drawn
   // shape always touches the ground, so lumpy circles bob and get stuck.

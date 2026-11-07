@@ -305,6 +305,17 @@
     }
   }
 
+  // Fill the area enclosed by the strokes (so the body hides the scenery behind it).
+  function fillStrokes(c, list, color) {
+    c.fillStyle = color;
+    c.beginPath();
+    for (const s of list) {
+      c.moveTo(s[0].x, s[0].y);
+      for (let i = 1; i < s.length; i++) c.lineTo(s[i].x, s[i].y);
+    }
+    c.fill();
+  }
+
   // Normalize strokes: scale so the larger side equals `size`, and move the anchor
   // point ('center' of bbox, or 'top' = topmost point) to (0, 0).
   function normalize(list, size, anchor = 'center') {
@@ -331,10 +342,12 @@
     const cy = groundY - legLen - r;
     const ink = cssVar('--ink');
 
-    const place = (strokes, x, y, size, anchor, color) => {
+    const place = (strokes, x, y, size, anchor, color, fill) => {
+      const n = normalize(strokes, size, anchor);
       c.save();
       c.translate(x, y);
-      drawStrokes(c, normalize(strokes, size, anchor), color, strokeWidth);
+      if (fill) fillStrokes(c, n, fill);
+      drawStrokes(c, n, color, strokeWidth);
       c.restore();
     };
 
@@ -344,7 +357,7 @@
     const spread = P.leg2 ? r * CFG.pet.legSpread : 0;
     if (P.leg1) place(P.leg1, cx + spread, hipY, legLen, 'top', ink);
     if (P.leg2) place(P.leg2, cx - spread, hipY, legLen, 'top', ink);
-    if (P.body) place(P.body, cx, cy, r * 2, 'center', ink);
+    if (P.body) place(P.body, cx, cy, r * 2, 'center', ink, cssVar('--bg'));
     if (P.mouth) place(P.mouth, cx + r * 0.55, cy + r * 0.15, r * 0.4, 'center', ink);
     if (P.eyes) place(P.eyes, cx + r * 0.3, cy - r * 0.3, r * 0.5, 'center', ink);
   }
@@ -441,6 +454,7 @@
     c.save();
     c.translate(roll.x, groundY - lift);
     c.rotate(roll.angle);
+    fillStrokes(c, roll.shape, cssVar('--bg'));
     drawStrokes(c, roll.shape, cssVar('--ink'), CFG.pet.strokeWidth);
     c.restore();
   }
@@ -454,6 +468,7 @@
 
     if (!ONBOARDING.includes(state.stage)) {
       const groundY = height - CFG.pet.groundOffset;
+      window.Scenery.draw(ctx, dt, t, width, groundY, cssVar('--ink'));
       ctx.strokeStyle = cssVar('--ink-muted');
       ctx.lineWidth = 1.5;
       ctx.beginPath();
