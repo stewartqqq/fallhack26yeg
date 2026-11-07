@@ -52,17 +52,17 @@ window.SIDEKICK = {
 
   // Background doodles (scenery.js): decoration only, nothing interacts with the pet.
   scenery: {
-    treeAlpha: 0.16,
-    treeHeight: [70, 150],  // px
-    treeGap: [90, 220],     // px between trees
-    cloudAlpha: 0.14,
-    clouds: 4,
-    cloudSpeed: 6,          // px/s drift
-    birdAlpha: 0.45,
-    birds: 3,
-    birdSpeed: [22, 45],    // px/s
-    grassAlpha: 0.5,
-    grassGap: [18, 60],     // px between tufts
+    treeAlpha: 0.13,
+    treeHeight: [60, 120],  // px
+    treeGap: [260, 480],    // px between trees
+    cloudAlpha: 0.13,
+    clouds: 2,
+    cloudSpeed: 5,          // px/s drift
+    birdAlpha: 0.35,
+    birds: 2,
+    birdSpeed: [22, 40],    // px/s
+    grassAlpha: 0.35,
+    grassGap: [90, 200],    // px between tufts
   },
 
   // Phase 4: once the circle is drawn (and until the first leg is), the body

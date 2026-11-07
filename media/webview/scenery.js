@@ -25,17 +25,17 @@ window.Scenery = (function () {
     let x = 30 + r() * 60;
     while (x < width - 20) {
       const h = cfg.treeHeight[0] + r() * (cfg.treeHeight[1] - cfg.treeHeight[0]);
-      trees.push({ x, h, kind: r() < 0.35 ? 'pine' : 'round', seed: Math.floor(r() * 1e6), lean: (r() - 0.5) * 0.08 });
+      trees.push({ x, h, kind: r() < 0.4 ? 'pine' : 'round' });
       x += cfg.treeGap[0] + r() * (cfg.treeGap[1] - cfg.treeGap[0]);
     }
     const clouds = [];
     for (let i = 0; i < cfg.clouds; i++) {
-      clouds.push({ x: r() * width, y: 18 + r() * groundY * 0.25, w: 40 + r() * 40, seed: Math.floor(r() * 1e6) });
+      clouds.push({ x: r() * width, y: 30 + r() * groundY * 0.25, w: 36 + r() * 24 });
     }
     const tufts = [];
     x = 10 + r() * 30;
     while (x < width) {
-      const blades = 2 + Math.floor(r() * 3);
+      const blades = 2;
       tufts.push({ x, blades, h: 5 + r() * 6, seed: r() * 10 });
       x += cfg.grassGap[0] + r() * (cfg.grassGap[1] - cfg.grassGap[0]);
     }
@@ -44,65 +44,43 @@ window.Scenery = (function () {
 
   // ---------- doodle helpers ----------
 
-  // Wobbly closed loop around (cx, cy). bumps > 0 gives a scalloped (cloud/canopy) edge.
-  function blob(c, cx, cy, rx, ry, seed, bumps) {
-    const r = rng(seed);
-    const n = 28;
-    const phase = r() * 6;
-    c.beginPath();
-    for (let i = 0; i <= n + 1; i++) {
-      const a = (i / n) * Math.PI * 2;
-      let k = 1 + (r() - 0.5) * 0.08;
-      if (bumps) k += Math.abs(Math.sin(a * bumps + phase)) * 0.18;
-      const px = cx + Math.cos(a) * rx * k;
-      const py = cy + Math.sin(a) * ry * k;
-      i ? c.lineTo(px, py) : c.moveTo(px, py);
-    }
-    c.stroke();
-  }
+  // Minimal shapes: one stroke each, no jitter.
 
-  function wobblyLine(c, x0, y0, x1, y1, seed) {
-    const r = rng(seed);
+  // Cloud: flat bottom, two humps on top, drawn as one clean outline.
+  function drawCloud(c, x, y, w) {
+    const a1 = x - w * 0.2, r1 = w * 0.3;  // big left hump
+    const a2 = x + w * 0.22, r2 = w * 0.28; // smaller right hump
+    // where the humps meet
+    const mx = (r1 * r1 - r2 * r2 + a2 * a2 - a1 * a1) / (2 * (a2 - a1));
+    const my = -Math.sqrt(Math.max(0, r1 * r1 - (mx - a1) ** 2));
     c.beginPath();
-    c.moveTo(x0, y0);
-    const steps = 4;
-    for (let i = 1; i <= steps; i++) {
-      const t = i / steps;
-      c.lineTo(x0 + (x1 - x0) * t + (i < steps ? (r() - 0.5) * 2 : 0), y0 + (y1 - y0) * t);
-    }
+    c.moveTo(a1 - r1, y);
+    c.lineTo(a2 + r2, y);
+    c.arc(a2, y, r2, 0, Math.atan2(my, mx - a2), true);
+    c.arc(a1, y, r1, Math.atan2(my, mx - a1), Math.PI, true);
     c.stroke();
   }
 
   function drawTree(c, tr, groundY) {
-    const { x, h, seed, lean } = tr;
-    c.save();
-    c.translate(x, groundY);
-    c.rotate(lean);
+    const { x, h } = tr;
+    c.beginPath();
     if (tr.kind === 'round') {
-      const trunkH = h * 0.45;
-      wobblyLine(c, -3, 0, -2, -trunkH, seed);
-      wobblyLine(c, 3, 0, 2, -trunkH, seed + 1);
-      wobblyLine(c, 0, -trunkH * 0.6, 8, -trunkH * 0.9, seed + 2); // little branch
-      const rr = h * 0.32;
-      blob(c, 0, -trunkH - rr * 0.7, rr, rr * 0.9, seed, 5);
+      const rr = h * 0.3;
+      const top = groundY - h + rr;
+      c.moveTo(x, groundY);
+      c.lineTo(x, top + rr);
+      c.moveTo(x + rr, top);
+      c.arc(x, top, rr, 0, Math.PI * 2);
     } else {
-      const trunkH = h * 0.18;
-      wobblyLine(c, -2, 0, -2, -trunkH, seed);
-      wobblyLine(c, 2, 0, 2, -trunkH, seed + 1);
-      // zig-zag pine: three stacked triangles
-      const w = h * 0.28;
-      for (let i = 0; i < 3; i++) {
-        const base = -trunkH - i * h * 0.24;
-        const ww = w * (1 - i * 0.22);
-        c.beginPath();
-        c.moveTo(-ww, base);
-        c.lineTo(0, base - h * 0.36);
-        c.lineTo(ww, base);
-        c.closePath();
-        c.stroke();
-      }
+      const trunk = h * 0.15;
+      c.moveTo(x, groundY);
+      c.lineTo(x, groundY - trunk);
+      c.moveTo(x - h * 0.22, groundY - trunk);
+      c.lineTo(x, groundY - h);
+      c.lineTo(x + h * 0.22, groundY - trunk);
+      c.closePath();
     }
-    c.restore();
+    c.stroke();
   }
 
   function drawBird(c, b, t) {
@@ -154,12 +132,12 @@ window.Scenery = (function () {
     for (const cl of layout.clouds) {
       cl.x += cfg.cloudSpeed * dt;
       if (cl.x - cl.w > width) cl.x = -cl.w;
-      blob(c, cl.x, cl.y, cl.w * 0.5, cl.w * 0.2, cl.seed, 3);
+      drawCloud(c, cl.x, cl.y, cl.w);
     }
 
     // trees
     c.globalAlpha = cfg.treeAlpha;
-    c.lineWidth = 2;
+    c.lineWidth = 1.8;
     for (const tr of layout.trees) drawTree(c, tr, groundY);
 
     // birds
