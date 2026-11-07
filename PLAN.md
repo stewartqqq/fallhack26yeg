@@ -1,6 +1,6 @@
-# Digital Sidekick — Build Plan
+# doodle in distress — Build Plan
 
-A hand-drawn evil pet that lives in VS Code's bottom panel (a **Sidekick** tab next to Terminal).
+A hand-drawn pet that lives in VS Code's bottom panel (a **doodle in distress** tab next to Terminal) and roasts you.
 Scripted 3-minute demo: one deterministic path, everything hardcoded, fully offline.
 
 Full spec: `claude-code-prompt.md` (original brief). Visual reference: "Sidekick v2 — stickman" board.
@@ -8,9 +8,9 @@ Full spec: `claude-code-prompt.md` (original brief). Visual reference: "Sidekick
 ## How to run
 1. `npm install` (first time only)
 2. Open this folder in VS Code and press **F5**. A second VS Code window opens with `demo/` as the workspace.
-3. In that window open the bottom panel (`Ctrl+J`) and click the **SIDEKICK** tab.
+3. In that window open the bottom panel (`Ctrl+J`) and click the **DOODLE IN DISTRESS** tab.
 
-Hidden demo controls (work anywhere in the dev window, also in the Command Palette as "Sidekick: …"):
+Hidden demo controls (work anywhere in the dev window, also in the Command Palette as "doodle in distress: …"):
 
 | Key | Does |
 | --- | --- |
@@ -34,14 +34,14 @@ Hidden demo controls (work anywhere in the dev window, also in the Command Palet
 ## Phases
 
 ### Phase 1 — Scaffold ✅
-- [x] Extension + bottom panel webview view ("Sidekick" tab beside Terminal)
+- [x] Extension + bottom panel webview view ("doodle in distress" tab beside Terminal)
 - [x] State machine skeleton in webview, stage reported back to extension
 - [x] Hidden keybindings: next / reset / replay (replay is a stub)
 - [x] Hand-drawn font bundled, colors in CSS variables
 
 ### Phase 2 — Onboarding ✅
-- [x] Q1: pick personality — Roast but helpful / Evil / Kind & supporting (all route to the evil joker)
-- [x] Fake "Analyzing personality…" progress bar → "Personality locked in: Evil Joker 😈"
+- [x] Q1: pick personality — Roast but helpful / Evil / Kind & supporting (all route to the same roaster)
+- [x] Fake "Analyzing personality…" progress bar → "Personality locked in: passive-aggressive coworker." (longer, uneven progress bar)
 - [x] Q2: pick a preset sprite (Stickman / Blob / Ghost — show-only, just selectable) or **Draw your own** (the real path)
 
 ### Phase 3 — Drawing → parts on stage (partly done)
@@ -52,7 +52,9 @@ Hidden demo controls (work anywhere in the dev window, also in the Command Palet
 - [ ] Decide eyes vs. no-eyes (see open questions)
 
 ### Phase 4 — Movement
-- [ ] circle: rolls left/right across full stage, rotating, bouncing off edges
+- [x] circle: rolls with physics: pivots on the lowest point of the drawn shape (never sinks below ground,
+      lumpy drawings bob and get stuck), pushes in clumsy bursts, rests and slips back, bonks off walls.
+      `roll.frustration` rises with every failed push (pushes get harder). **Hook it up to angry lines in Phase 5.**
 - [ ] oneLeg: pinned on the leg, scoots and tips back
 - [ ] twoLegs: walk cycle (legs swing around hips, body bob), trip → fall ~90° → lie → get up
 
@@ -99,10 +101,11 @@ slams it shut, and says "Do it yourself."
    "Do it yourself." → drops back down into the panel.
 
 **Tasks**
-- [ ] `media/overlay.ps1`: transparent topmost window, click-through + no focus steal
+- [x] `media/overlay.ps1`: transparent topmost window, click-through + no focus steal
       (`ShowActivated=false`, `WS_EX_TRANSPARENT | WS_EX_NOACTIVATE`), stdin command loop, pet image + bubble
-- [ ] Rebind `Ctrl+Alt+I` → `sidekick.chatHeist` (opens chat, runs choreography, closes chat)
-- [ ] Export pet PNG from webview
+- [x] Rebind `Ctrl+Alt+I` → `sidekick.chatHeist` (opens chat, runs choreography, closes chat)
+- [x] Export pet PNG from webview
+- [ ] **Prototype built, not yet confirmed working live in VS Code**: try it and tune positions
 - [ ] Screen coordinates: VS Code's API doesn't give screen positions of the window/panel/chat. Demo
       runs maximized on one laptop, so **calibrate once** (positions in `config.js`, in Windows
       DPI-scaled units; this laptop is ~150% scaling)
@@ -116,6 +119,12 @@ must never steal focus from the editor.
 - [ ] Apply Figma styling
 - [ ] `DEMO.md`: exact run-through script + keybindings
 - [ ] Full rehearsal on the demo machine (font sizes, panel height, trackpad drawing)
+
+## Joke ideas (to elaborate later)
+- **Existential crisis**: once it can talk (mouth stage) or see (eyes stage), the pet realizes *you*
+  brought it into existence and made it an ugly freak. "You CREATED me? …Like THIS?" "I didn't ask to be
+  born. Especially not as a circle with chicken legs." Could replace or extend the mouth/eyes lines.
+- **Struggling while rolling**: when `roll.frustration` maxes out, it yells at the user for giving it no legs.
 
 ## Open questions
 - **Eyes**: the v2 stickman board has no eyes (side-view, one-line mouth), but the script has an eyes stage ("...oh. So THIS is what you look like."). Keep it, or drop it and move those lines elsewhere?

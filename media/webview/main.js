@@ -1,4 +1,4 @@
-// Digital Sidekick webview: one state machine drives everything.
+// doodle in distress webview: one state machine drives everything.
 (function () {
   const vscode = acquireVsCodeApi();
   const CFG = window.SIDEKICK;
@@ -17,6 +17,8 @@
     parts: {},   // partName -> strokes (arrays of {x, y} in pad pixels)
     timers: [],  // cleared on every stage change so forced skips never leave stale callbacks
     busy: false, // true while a fake "Recognizing…" is in flight
+    petX: null,  // where the pet stands on stage (null = center); kept from wherever it last rolled to
+    bodyAngle: 0, // body rotation it ended up at after rolling, so the drawing doesn't snap back
   };
 
   function later(ms, fn) {
@@ -39,6 +41,9 @@
 
   function reset() {
     state.parts = {};
+    state.petX = null;
+    state.bodyAngle = 0;
+    resetRoll();
     clearPad();
     hideToast();
     goTo(CFG.stages[0]);
@@ -97,7 +102,7 @@
     const row = document.createElement('div');
     row.className = 'choices';
     for (const opt of T.character.options) {
-      // Illusion of choice: every option leads to the same evil joker.
+      // Illusion of choice: every option leads to the same passive-aggressive coworker.
       row.appendChild(choiceButton({ icon: opt.face, name: opt.name, desc: opt.desc }, () => next()));
     }
     onboarding.append(title(T.character.title), row);
@@ -114,8 +119,17 @@
     onboarding.append(heading, bar, sub);
 
     const ms = CFG.timing.analyzingMs;
-    fill.style.transitionDuration = ms + 'ms';
-    requestAnimationFrame(() => requestAnimationFrame(() => (fill.style.width = '100%')));
+    // Fill in stalls and bursts, segment by segment.
+    let prevT = 0;
+    for (const [tf, pf] of CFG.timing.analyzingCurve) {
+      const start = prevT * ms, dur = (tf - prevT) * ms;
+      later(start + 30, () => {
+        fill.style.transitionDuration = dur + 'ms';
+        fill.style.transitionTimingFunction = 'cubic-bezier(.2,.8,.3,1)';
+        fill.style.width = pf * 100 + '%';
+      });
+      prevT = tf;
+    }
 
     const steps = T.analyzing.steps;
     steps.forEach((step, i) => later((ms / steps.length) * i, () => (sub.textContent = step + '…')));
@@ -245,6 +259,7 @@
     if (!drawn.length) return toast(T.draw.empty);
 
     state.parts[part] = drawn;
+    if (part === 'body') resetRoll(); // start rolling from the middle
     state.busy = true;
     clearPad();
     toast(T.draw.recognizing, 0);
@@ -294,6 +309,17 @@
     }
   }
 
+  // Fill the area enclosed by the strokes (so the body hides the scenery behind it).
+  function fillStrokes(c, list, color) {
+    c.fillStyle = color;
+    c.beginPath();
+    for (const s of list) {
+      c.moveTo(s[0].x, s[0].y);
+      for (let i = 1; i < s.length; i++) c.lineTo(s[i].x, s[i].y);
+    }
+    c.fill();
+  }
+
   // Normalize strokes: scale so the larger side equals `size`, and move the anchor
   // point ('center' of bbox, or 'top' = topmost point) to (0, 0).
   function normalize(list, size, anchor = 'center') {
@@ -319,28 +345,135 @@
     const legLen = r * 1.1;
     const cy = groundY - legLen - r;
     const ink = cssVar('--ink');
-    const muted = cssVar('--ink-muted');
 
-    const place = (strokes, x, y, size, anchor, color) => {
+    const place = (strokes, x, y, size, anchor, color, fill, angle = 0) => {
+      const n = normalize(strokes, size, anchor);
       c.save();
       c.translate(x, y);
-      drawStrokes(c, normalize(strokes, size, anchor), color, strokeWidth);
+      c.rotate(angle);
+      if (fill) fillStrokes(c, n, fill);
+      drawStrokes(c, n, color, strokeWidth);
       c.restore();
     };
 
-    if (P.legRight) place(P.legRight, cx + 3, cy + r - 2, legLen, 'top', muted); // back leg
-    if (P.legLeft) place(P.legLeft, cx - 3, cy + r - 2, legLen, 'top', ink);
-    if (P.body) place(P.body, cx, cy, r * 2, 'center', ink);
+    // One leg stands in the middle; once the second is drawn, the first shifts
+    // right and the second goes on the left.
+    const hipY = cy + r - 2;
+    const spread = P.leg2 ? r * CFG.pet.legSpread : 0;
+    if (P.leg1) place(P.leg1, cx + spread, hipY, legLen, 'top', ink);
+    if (P.leg2) place(P.leg2, cx - spread, hipY, legLen, 'top', ink);
+    if (P.body) place(P.body, cx, cy, r * 2, 'center', ink, cssVar('--bg'), state.bodyAngle);
     if (P.mouth) place(P.mouth, cx + r * 0.55, cy + r * 0.15, r * 0.4, 'center', ink);
     if (P.eyes) place(P.eyes, cx + r * 0.3, cy - r * 0.3, r * 0.5, 'center', ink);
   }
 
-  function frame() {
+  // Clumsy rolling with real-ish physics. The body pivots about whichever point
+  // of the drawn shape is currently lowest, so it never sinks below the ground
+  // and lumpy drawings bob, rock, and get stuck. It pushes itself in uneven
+  // bursts, rests (slipping back a bit), and bonks off the walls.
+  // frustration goes up every push that gets nowhere (pushes get harder); later stages can read it.
+  const roll = { x: null, angle: 0, omega: 0, dir: 1, phase: 'rest', phaseLeft: 0, effort: 0, pushFromX: 0, frustration: 0, shape: null, src: null };
+  const rand = (lo, hi) => lo + Math.random() * (hi - lo);
+
+  function resetRoll() {
+    Object.assign(roll, { x: null, angle: 0, omega: 0, dir: 1, phase: 'rest', phaseLeft: 0.4, effort: 0, frustration: 0 });
+  }
+
+  // Normalized body points (centered at 0,0), cached per drawing.
+  function rollShape() {
+    if (roll.src !== state.parts.body) {
+      roll.src = state.parts.body;
+      roll.shape = normalize(state.parts.body, CFG.pet.bodyRadius * 2, 'center');
+      roll.points = roll.shape.flat();
+    }
+    return roll.points;
+  }
+
+  // Lowest point of the shape at the current angle, relative to the center.
+  function contactPoint(points, angle) {
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    let best = null;
+    for (const p of points) {
+      const x = p.x * cos - p.y * sin;
+      const y = p.x * sin + p.y * cos;
+      if (!best || y > best.y) best = { x, y };
+    }
+    return best;
+  }
+
+  function updateRoll(dt, cardLeft) {
+    const R = CFG.roll;
+    const r = CFG.pet.bodyRadius;
+    const min = 24 + r;
+    const max = Math.max(min, cardLeft - r - 12);
+    if (roll.x == null) roll.x = (min + max) / 2;
+    const points = rollShape();
+
+    // Effort state machine: push → rest → push…, with random lengths and strength.
+    roll.phaseLeft -= dt;
+    if (roll.phaseLeft <= 0) {
+      if (roll.phase === 'push') {
+        const progress = (roll.x - roll.pushFromX) * roll.dir;
+        roll.frustration = progress < R.stuckPx ? Math.min(roll.frustration + 1, R.maxFrustration) : 0;
+        roll.phase = 'rest';
+        roll.phaseLeft = rand(...R.restSec);
+      } else {
+        roll.phase = 'push';
+        roll.phaseLeft = rand(...R.pushSec);
+        roll.pushFromX = roll.x;
+        roll.effort =
+          R.pushAccel * (1 + rand(-R.pushJitter, R.pushJitter)) * (1 + R.frustrationBoost * roll.frustration);
+      }
+    }
+    let motor = 0;
+    if (roll.phase === 'push') motor = roll.dir * roll.effort;
+    else if (roll.phase === 'rest') motor = -roll.dir * roll.effort * R.slipBack;
+
+    // Gravity tips it toward whichever side its center hangs over the contact point.
+    const c = contactPoint(points, roll.angle);
+    const gravity = (-c.x / r) * R.gravity;
+
+    roll.omega += (motor + gravity - R.friction * roll.omega) * dt;
+    roll.angle += roll.omega * dt;
+    // Rolling without slipping about the contact point: center moves by ω × height.
+    roll.x += roll.omega * c.y * dt;
+
+    // Walls. A real hit bounces it back and dazes it; just leaning on the wall doesn't.
+    if (roll.x > max || roll.x < min) {
+      const atRight = roll.x > max;
+      roll.x = atRight ? max : min;
+      const speed = Math.abs(roll.omega);
+      if (atRight ? roll.omega > 0 : roll.omega < 0) roll.omega = -roll.omega * R.wallBounce;
+      roll.dir = atRight ? -1 : 1;
+      if (speed > 1 && roll.phase !== 'stunned') {
+        roll.phase = 'stunned';
+        roll.phaseLeft = R.stunnedSec;
+      }
+    }
+  }
+
+  // Draws the user's drawn body rotated about its center, lifted so its
+  // lowest point sits exactly on the ground line.
+  function drawRollingCircle(c, groundY) {
+    const lift = contactPoint(rollShape(), roll.angle).y;
+    c.save();
+    c.translate(roll.x, groundY - lift);
+    c.rotate(roll.angle);
+    fillStrokes(c, roll.shape, cssVar('--bg'));
+    drawStrokes(c, roll.shape, cssVar('--ink'), CFG.pet.strokeWidth);
+    c.restore();
+  }
+
+  let lastFrameT = null;
+  function frame(t) {
+    const dt = lastFrameT == null ? 0 : Math.min((t - lastFrameT) / 1000, 0.05);
+    lastFrameT = t;
     const { width, height } = stageSize;
     ctx.clearRect(0, 0, width, height);
 
     if (!ONBOARDING.includes(state.stage)) {
       const groundY = height - CFG.pet.groundOffset;
+      window.Scenery.draw(ctx, dt, t, width, groundY, cssVar('--ink'));
       ctx.strokeStyle = cssVar('--ink-muted');
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -348,9 +481,17 @@
       ctx.lineTo(width - 24, groundY);
       ctx.stroke();
       if (!state.petAway) {
-        // Center the pet in the free space left of the drawing card.
+        // Free space ends at the drawing card; the pet starts centered in it.
         const cardLeft = card.classList.contains('hidden') ? width : card.offsetLeft;
-        drawPet(ctx, cardLeft / 2, groundY, CFG.pet.bodyRadius);
+        // Just a circle so far (drawn, no legs yet): it rolls around.
+        if (state.parts.body && !state.parts.leg1) {
+          updateRoll(dt, cardLeft);
+          drawRollingCircle(ctx, groundY);
+          state.petX = roll.x;
+          state.bodyAngle = roll.angle;
+        } else {
+          drawPet(ctx, state.petX ?? cardLeft / 2, groundY, CFG.pet.bodyRadius);
+        }
       }
     }
     requestAnimationFrame(frame);
@@ -369,8 +510,8 @@
     const leg = [{ x: 0, y: 0 }, { x: -6, y: 18 }, { x: 2, y: 36 }, { x: 16, y: 37 }];
     return {
       body: [circle],
-      legLeft: [leg],
-      legRight: [leg.map((p) => ({ x: p.x + 4, y: p.y }))],
+      leg1: [leg],
+      leg2: [leg.map((p) => ({ x: p.x + 4, y: p.y }))],
       mouth: [[{ x: 0, y: 0 }, { x: 12, y: -1 }]],
     };
   }

@@ -123,6 +123,7 @@ class SidekickViewProvider implements vscode.WebviewViewProvider {
   <div id="toast" class="hidden"></div>
 
   <script nonce="${nonce}" src="${media('webview', 'config.js')}"></script>
+  <script nonce="${nonce}" src="${media('webview', 'scenery.js')}"></script>
   <script nonce="${nonce}" src="${media('webview', 'main.js')}"></script>
 </body>
 </html>`;
@@ -182,7 +183,7 @@ class Overlay {
 
 export function activate(context: vscode.ExtensionContext) {
   const provider = new SidekickViewProvider(context.extensionUri);
-  const log = vscode.window.createOutputChannel('Sidekick');
+  const log = vscode.window.createOutputChannel('doodle in distress');
   const overlay = new Overlay(context.extensionUri, log);
   overlay.start();
 

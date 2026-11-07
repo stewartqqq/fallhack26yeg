@@ -21,22 +21,24 @@ window.SIDEKICK = {
   // Which body part the next drawing becomes, per stage (fake recognition).
   drawPart: {
     circle: 'body',
-    oneLeg: 'legLeft',
-    twoLegs: 'legRight',
+    oneLeg: 'leg1',
+    twoLegs: 'leg2',
     mouth: 'mouth',
     eyes: 'eyes',
   },
   partLabel: {
     body: 'Circle',
-    legLeft: 'Leg',
-    legRight: 'Leg',
+    leg1: 'Leg',
+    leg2: 'Leg',
     mouth: 'Mouth',
     eyes: 'Eyes',
   },
 
   timing: {
-    analyzingMs: 1600,
-    personalityLockedMs: 1100,
+    analyzingMs: 5200,        // total time the fake progress bar takes
+    personalityLockedMs: 2600, // how long "Personality locked in" stays up
+    // Fake progress bar: [fraction of time, fraction filled]. Stalls and bursts so it looks real.
+    analyzingCurve: [[0.1, 0.16], [0.28, 0.22], [0.4, 0.27], [0.48, 0.61], [0.66, 0.68], [0.8, 0.71], [0.9, 0.96], [1, 1]],
     recognizingMs: 700,
     toastMs: 1400,
   },
@@ -45,6 +47,41 @@ window.SIDEKICK = {
     bodyRadius: 34,  // px on stage; drawn circle is scaled to this
     groundOffset: 28, // ground line distance from bottom of stage
     strokeWidth: 3,
+    legSpread: 0.3,   // with two legs: each hip sits this × bodyRadius left/right of center
+  },
+
+  // Background doodles (scenery.js): decoration only, nothing interacts with the pet.
+  scenery: {
+    treeAlpha: 0.13,
+    treeHeight: [60, 120],  // px
+    treeGap: [260, 480],    // px between trees
+    cloudAlpha: 0.13,
+    clouds: 2,
+    cloudSpeed: 5,          // px/s drift
+    birdAlpha: 0.35,
+    birds: 2,
+    birdSpeed: [22, 40],    // px/s
+    grassAlpha: 0.35,
+    grassGap: [90, 200],    // px between tufts
+  },
+
+  // Phase 4: once the circle is drawn (and until the first leg is), the body
+  // tries to roll around. Real rolling physics: the lowest point of the drawn
+  // shape always touches the ground, so lumpy circles bob and get stuck.
+  // It pushes in clumsy bursts, rests (and slips back), and bonks off walls.
+  roll: {
+    pushAccel: 10,           // rad/s² of effort while pushing
+    pushJitter: 0.6,         // ± fraction of random variation per push
+    pushSec: [0.3, 1.1],     // random push duration range
+    restSec: [0.25, 0.9],    // random rest duration range
+    slipBack: 0.25,          // while resting, rolls back with this fraction of push effort
+    gravity: 35,             // how hard lumps tip it over (torque per px of offset)
+    stuckPx: 15,             // a push that moves less than this counts as failed...
+    frustrationBoost: 0.5,   // ...and makes the next push this much harder (stacks)
+    maxFrustration: 4,
+    friction: 2.2,           // rolling resistance
+    wallBounce: 0.4,         // fraction of spin kept after bonking a wall
+    stunnedSec: 0.7,         // dazed after a wall bonk
   },
 
   // Chat heist (Ctrl+Alt+I): pet leaves the panel, hops to the AI chat, kicks it shut.
@@ -70,7 +107,7 @@ window.SIDEKICK = {
     analyzing: {
       title: 'Analyzing personality…',
       steps: ['reading your commit history', 'judging your variable names', 'calibrating sarcasm'],
-      locked: 'Personality locked in: Evil Joker.',
+      locked: 'Personality locked in: passive-aggressive coworker.',
     },
     sprite: {
       title: 'Choose a body',
