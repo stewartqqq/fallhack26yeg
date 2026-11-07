@@ -27,6 +27,11 @@ window.Speech = (function () {
     return Math.min(line.text.length, Math.floor((t - line.start) / S().charMs));
   }
 
+  /** True while a line is on screen or queued. */
+  function busy() {
+    return !!line || queue.length > 0;
+  }
+
   /** True while letters are still appearing (drives the mouth flapping). */
   function talking() {
     return !!line && shown(lastT) < line.text.length;
@@ -148,5 +153,5 @@ window.Speech = (function () {
     c.restore();
   }
 
-  return { say, clear, talking, draw };
+  return { say, clear, busy, talking, draw };
 })();

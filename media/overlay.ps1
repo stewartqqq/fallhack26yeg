@@ -190,30 +190,66 @@ public static class SidekickOverlay
             Hop(Lerp(sx, cx, k0), Lerp(sy, cy, k0), Lerp(sx, cx, k1), Lerp(sy, cy, k1), i == 1 ? 160 : 90, 420, i % 2 == 0 ? -12 : 12);
             Add(90, null, delegate (double t) { petScale.ScaleY = 1 - 0.18 * Math.Sin(Math.PI * t); });
         }
-        // wind up... KICK
-        Add(260, null, delegate (double t) { petRot.Angle = -20 * Ease(t); });
-        Add(110, null, delegate (double t) { petRot.Angle = -20 + 45 * t; px = cx + 45 * t; });
-        Add(10, delegate { Send("kick"); }, null);
-        Add(260, null, delegate (double t) { petRot.Angle = 25 * (1 - t); px = cx + 45 * (1 - Ease(t)); });
-        // smug line
-        Add(text.Length * 45 + 1500, delegate { bubble.Visibility = Visibility.Visible; },
+        // it answers the chat before slamming it shut (silent typing — no per-character blips)
+        Add(text.Length * 45 + 650, delegate { bubble.Visibility = Visibility.Visible; },
             delegate (double t) {
-                double typing = text.Length * 45.0 / (text.Length * 45 + 1500);
+                double typing = text.Length * 45.0 / (text.Length * 45 + 650);
                 int n = (int)Math.Ceiling(text.Length * Math.Min(1, t / typing));
                 bubbleText.Text = text.Substring(0, n);
                 petScale.ScaleY = 1 + 0.06 * Math.Sin(t * 40); // talking wobble
             });
         Add(10, delegate { bubble.Visibility = Visibility.Hidden; petScale.ScaleY = 1; }, null);
-        // tumble back down into the panel
-        double fx = cx, fy = cy; // where the recoil leaves it
-        Add(750, null, delegate (double t) {
-            px = Lerp(fx, sx, t);
-            py = Lerp(fy, sy, t) - 120 * 4 * t * (1 - t);
-            petRot.Angle = 360 * t;
+        // wind up (crouch + lean back), a fast explosive strike, an impact hold, then a
+        // recoil that overshoots past upright before settling — one real hit, not a snap-back.
+        Add(260, null, delegate (double t) {
+            double e = Ease(t);
+            petRot.Angle = -18 * e;
+            petScale.ScaleY = 1 - 0.12 * e;
         });
+        Add(70, null, delegate (double t) {
+            double e = t * t; // accelerates hard into the strike
+            petRot.Angle = -18 + 38 * e;
+            px = cx + 38 * e;
+            petScale.ScaleY = 1 - 0.12 * (1 - e);
+        });
+        Add(10, delegate { Send("kick"); Beep(150, 70); }, null);
+        Add(110, null, delegate (double t) {
+            // impact hold: it just hit something solid, so it barely moves for a beat
+            petRot.Angle = 20 + Math.Sin(t * 40) * 1.5;
+            px = cx + 38 + Math.Sin(t * 50) * 1.2;
+        });
+        Add(220, null, delegate (double t) {
+            double e = Ease(t);
+            petRot.Angle = Lerp(20, -6, e);
+            px = cx + Lerp(38, -8, e);
+        });
+        Add(180, null, delegate (double t) {
+            double e = Ease(t);
+            petRot.Angle = Lerp(-6, 0, e);
+            px = cx + Lerp(-8, 0, e);
+        });
+        // tumble back toward the panel — the spin eases out so it settles upright
+        // instead of still spinning at full speed the instant it touches down.
+        double fx = cx, fy = cy; // where the recoil leaves it
+        Add(600, null, delegate (double t) {
+            double e = Ease(t);
+            px = Lerp(fx, sx, t);
+            py = Lerp(fy, sy, t) - 130 * 4 * t * (1 - t);
+            petRot.Angle = 360 * e;
+        });
+        // impact: it compresses on landing, then a small residual bounce
+        Add(90, null, delegate (double t) { petScale.ScaleY = 1 - 0.3 * Math.Sin(Math.PI * t); });
+        Add(130, null, delegate (double t) {
+            petScale.ScaleY = 1 - 0.1 * Math.Sin(Math.PI * t);
+            py = sy - 9 * Math.Sin(Math.PI * t);
+        });
+        // sits for a beat before ducking back down into the panel
+        Add(180, null, delegate (double t) { petScale.ScaleY = 1; });
+        Add(120, null, delegate (double t) { petScale.ScaleY = 1 - 0.3 * Ease(t); });
         Add(10, delegate {
             pet.Visibility = Visibility.Hidden;
             petRot.Angle = 0;
+            petScale.ScaleY = 1;
             win.Left = -20000; win.Top = -20000; win.Width = 10; win.Height = 10;
             Send("done");
         }, null);
@@ -224,6 +260,12 @@ public static class SidekickOverlay
 
     static double Lerp(double a, double b, double t) { return a + (b - a) * t; }
     static double Ease(double t) { return t * t * (3 - 2 * t); }
+
+    // Fire-and-forget beep so it never blocks the WPF render thread.
+    static void Beep(int freq, int ms)
+    {
+        ThreadPool.QueueUserWorkItem(delegate { try { Console.Beep(freq, ms); } catch { } });
+    }
 
     static void Add(double ms, Action begin, Action<double> update)
     {

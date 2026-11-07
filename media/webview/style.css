@@ -67,11 +67,17 @@ html, body {
 }
 #onboarding:empty { display: none; }
 
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 .ob-title {
   font-size: 32px;
   font-weight: normal;
   line-height: 1.2;
   margin: 0;
+  animation: popIn 280ms cubic-bezier(.2, .8, .3, 1) both;
 }
 
 .choices {
@@ -92,7 +98,12 @@ html, body {
   border: 2px solid var(--card-border);
   border-radius: var(--sketchy-radius);
   transition: transform 120ms ease, border-color 120ms ease;
+  animation: popIn 280ms cubic-bezier(.2, .8, .3, 1) both;
 }
+.choice:nth-child(1) { animation-delay: 0ms; }
+.choice:nth-child(2) { animation-delay: 60ms; }
+.choice:nth-child(3) { animation-delay: 120ms; }
+.choice:nth-child(4) { animation-delay: 180ms; }
 .choice:nth-child(2n) { border-radius: 15px 225px 15px 255px / 255px 15px 225px 15px; }
 .choice:hover { border-color: var(--ink); transform: rotate(-1.5deg) scale(1.03); }
 .choice:nth-child(2n):hover { transform: rotate(1.5deg) scale(1.03); }
@@ -194,7 +205,7 @@ html, body {
 .btn.primary { background: var(--accent); border-color: #fff; color: #fff; }
 .btn.primary:hover { background: var(--accent-hover); }
 
-/* ---------- Toast ---------- */
+/* ---------- App note (top-right) ---------- */
 #note {
   position: absolute;
   right: calc(var(--card-width) + 24px);
@@ -203,9 +214,10 @@ html, body {
   background: var(--bubble-bg);
   color: var(--bubble-ink);
   font-size: 24px;
-  transform: rotate(-2deg);
   border-radius: var(--sketchy-radius);
   border: 2px solid var(--bubble-ink);
+  transform: rotate(-2deg);
+  pointer-events: none;
 }
 
 /* ---------- Clumsy lettering ---------- */

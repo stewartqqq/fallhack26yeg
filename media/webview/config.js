@@ -175,6 +175,8 @@ window.SIDEKICK = {
         'You MONSTER.',
         'GIVE. ME. EYES.',
       ],
+      // when you poke or drag it (only once it has a mouth)
+      poke: ['Hey!', 'Rude.', 'Put me down.', 'I will remember this.', 'Ow.', 'Personal space!'],
     },
   },
 };

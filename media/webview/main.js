@@ -208,6 +208,7 @@
   /** Temporarily replace the note, then go back to the stage's note. */
   function flashNote(text) {
     setNote(text);
+    Sound.pop(false);
     clearTimeout(noteTimer);
     noteTimer = setTimeout(showNote, CFG.timing.flashNoteMs);
   }
@@ -274,6 +275,7 @@
     if (part === 'leg1') resetHop();
     if (part === 'mouth') window.Speech.say(T.lines.mouth); // first words
     clearPad();
+    Sound.pop(true);
     next();
   }
 
@@ -470,6 +472,7 @@
       if (speed > 1 && roll.phase !== 'stunned') {
         roll.phase = 'stunned';
         roll.phaseLeft = R.stunnedSec;
+        Sound.thud();
       }
     }
   }
@@ -672,6 +675,66 @@
     c.restore();
   }
 
+  // ---------------------------------------------------------------------------
+  // Poke/drag: click or drag the pet itself — it flinches, yelps, and
+  // (if dragged) gets picked up and dropped back into the simulation.
+  // ---------------------------------------------------------------------------
+  const poke = { dragging: false, pointerId: null, grabOffset: 0, targetX: null, moved: false, lastX: 0, vx: 0, tilt: 0, lift: 0 };
+
+  function petFlinch(big) {
+    poke.tilt = (Math.random() < 0.5 ? -1 : 1) * (big ? 0.5 : 0.3);
+    poke.lift = big ? 10 : 5;
+    if (big) Sound.thud();
+    else Sound.pop(false);
+    // Only complains if it has a mouth (and isn't already mid-sentence), in its own cloud.
+    const lines = T.lines.poke;
+    if (state.parts.mouth && !window.Speech.busy()) window.Speech.say([lines[Math.floor(Math.random() * lines.length)]]);
+  }
+
+  let petScreenX = 0, petScreenY = 0, petHitR = 0;
+  function pokeHit(x, y) {
+    const dx = x - petScreenX, dy = y - petScreenY;
+    return dx * dx + dy * dy <= petHitR * petHitR;
+  }
+
+  stage.addEventListener('pointerdown', (e) => {
+    if (ONBOARDING.includes(state.stage) || state.petAway) return;
+    if (!pokeHit(e.offsetX, e.offsetY)) return;
+    stage.setPointerCapture(e.pointerId);
+    poke.dragging = true;
+    poke.pointerId = e.pointerId;
+    poke.grabOffset = e.offsetX - petScreenX;
+    poke.moved = false;
+    poke.lastX = e.offsetX;
+    poke.vx = 0;
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (!poke.dragging || e.pointerId !== poke.pointerId) return;
+    if (Math.abs(e.offsetX - poke.lastX) > 2) poke.moved = true;
+    poke.vx = e.offsetX - poke.lastX;
+    poke.lastX = e.offsetX;
+    poke.targetX = e.offsetX - poke.grabOffset;
+  });
+  function endPoke(e) {
+    if (!poke.dragging || e.pointerId !== poke.pointerId) return;
+    poke.dragging = false;
+    poke.targetX = null;
+    petFlinch(poke.moved);
+  }
+  stage.addEventListener('pointerup', endPoke);
+  stage.addEventListener('pointercancel', endPoke);
+
+  // Rotates whatever drawFn() draws around (pivotX, pivotY) by the current poke tilt.
+  function drawWithPoke(drawFn, pivotX, pivotY) {
+    if (!poke.tilt) return drawFn();
+    ctx.save();
+    ctx.translate(pivotX, pivotY);
+    ctx.rotate(poke.tilt);
+    ctx.translate(-pivotX, -pivotY);
+    drawFn();
+    ctx.restore();
+  }
+
   let lastFrameT = null;
   function frame(t) {
     const dt = lastFrameT == null ? 0 : Math.min((t - lastFrameT) / 1000, 0.05);
@@ -688,22 +751,48 @@
       ctx.moveTo(24, groundY);
       ctx.lineTo(width - 24, groundY);
       ctx.stroke();
+
+      if (poke.dragging) {
+        poke.lift += (14 - poke.lift) * 0.25;
+        const targetTilt = Math.max(-0.5, Math.min(0.5, -poke.vx * 0.05));
+        poke.tilt += (targetTilt - poke.tilt) * 0.3;
+        poke.vx *= 0.8;
+      } else {
+        poke.tilt *= 0.86;
+        poke.lift *= 0.86;
+      }
+
       if (!state.petAway) {
         // Free space ends at the drawing card; the pet starts centered in it.
         const cardLeft = card.classList.contains('hidden') ? width : card.offsetLeft;
         // Just a circle so far (drawn, no legs yet): it rolls around.
         if (state.parts.body && !state.parts.leg1) {
-          updateRoll(dt, cardLeft);
-          drawRollingCircle(ctx, groundY);
+          if (poke.dragging && poke.targetX != null) roll.x = poke.targetX;
+          else updateRoll(dt, cardLeft);
+          petScreenX = roll.x;
+          petScreenY = groundY - CFG.pet.bodyRadius;
+          petHitR = CFG.pet.bodyRadius * 1.5;
+          drawWithPoke(() => drawRollingCircle(ctx, groundY - poke.lift), petScreenX, groundY);
           state.petX = roll.x;
           state.bodyAngle = roll.angle;
         } else if (state.parts.leg1 && !state.parts.leg2) {
-          // One leg: hop, fall, get up.
-          updateHop(dt, cardLeft);
-          drawHop(ctx, groundY);
+          // One leg: hop, fall, get up. Picked up: it just dangles wherever you drag it.
+          if (poke.dragging && poke.targetX != null) {
+            hop.cx = poke.targetX;
+            hop.footX = hop.cx - footDistance() * Math.sin(hop.angle);
+          } else updateHop(dt, cardLeft);
+          petScreenX = hop.cx;
+          petScreenY = groundY - CFG.pet.bodyRadius * 1.6;
+          petHitR = CFG.pet.bodyRadius * 1.7;
+          drawWithPoke(() => drawHop(ctx, groundY - poke.lift), hop.cx, groundY);
           state.petX = hop.footX;
         } else {
-          drawPet(ctx, state.petX ?? cardLeft / 2, groundY, CFG.pet.bodyRadius);
+          if (poke.dragging && poke.targetX != null) state.petX = poke.targetX;
+          const cx = state.petX ?? cardLeft / 2;
+          petScreenX = cx;
+          petScreenY = groundY - CFG.pet.bodyRadius * 1.6;
+          petHitR = CFG.pet.bodyRadius * 1.7;
+          drawWithPoke(() => drawPet(ctx, cx, groundY - poke.lift, CFG.pet.bodyRadius), cx, groundY);
         }
         // The creature's words, in a cloud next to its mouth.
         const r = CFG.pet.bodyRadius;
@@ -768,6 +857,9 @@
 
   document.querySelectorAll('.btn').forEach((b) => clumsy(b, b.textContent));
   clumsy($('pad-hint'), $('pad-hint').textContent);
+  document.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.btn, .choice')) Sound.click();
+  });
 
   resize();
   goTo(state.stage);
