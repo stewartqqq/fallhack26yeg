@@ -73,9 +73,13 @@ window.SIDEKICK = {
     font: "'Gloria Hallelujah', cursive",
     fontSize: 19,
     maxWidth: 230,  // px before wrapping
-    padX: 14,
-    padY: 8,
-    bump: 11,       // cloud bump radius
+    padX: 30,       // space between the text and the cloud's edge
+    padY: 22,
+    bump: 22,       // cloud bump radius (bigger = fewer, rounder bumps)
+    bumpSpacing: 1.5, // distance between bumps, in bump radii
+    gap: 26,        // space between the pet and the cloud
+    lift: 30,       // cloud center sits this far above the mouth
+    headWidth: 70,  // used to put the cloud left of the head when there's no room on the right
     charMs: 45,     // typewriter speed
     holdMs: 1100,   // pause after a line is typed…
     holdPerCharMs: 25, // …plus this per character

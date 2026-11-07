@@ -501,14 +501,30 @@
   }
 
   // Distance from body center to the foot, measured from the actual leg drawing.
+  // Also caches every point of the drawn pet (body + leg, relative to the body
+  // center) so we can find its true lowest point at any tilt.
   function footDistance() {
-    if (hop.legSrc !== state.parts.leg1) {
+    if (hop.legSrc !== state.parts.leg1 || hop.bodySrc !== state.parts.body || hop.bodyAngle !== state.bodyAngle) {
       const r = CFG.pet.bodyRadius;
-      const leg = normalize(state.parts.leg1, r * 1.1, 'top').flat();
-      hop.D = r - 2 + Math.max(...leg.map((p) => p.y));
+      const leg = normalize(state.parts.leg1, r * 1.1, 'top').flat().map((p) => ({ x: p.x, y: p.y + r - 2 }));
+      const cos = Math.cos(state.bodyAngle), sin = Math.sin(state.bodyAngle);
+      const body = normalize(state.parts.body, r * 2, 'center').flat()
+        .map((p) => ({ x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos }));
+      hop.D = Math.max(...leg.map((p) => p.y));
+      hop.points = [...body, ...leg];
       hop.legSrc = state.parts.leg1;
+      hop.bodySrc = state.parts.body;
+      hop.bodyAngle = state.bodyAngle;
     }
     return hop.D;
+  }
+
+  // How far below the body center the lowest point of the drawing is at this tilt.
+  function lowestAt(angle) {
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    let low = -Infinity;
+    for (const p of hop.points) low = Math.max(low, p.x * sin + p.y * cos);
+    return low;
   }
 
   function setHopPhase(phase, dur) {
@@ -643,7 +659,8 @@
   function drawHop(c, groundY) {
     const r = CFG.pet.bodyRadius;
     const D = footDistance();
-    const cy = groundY - Math.max(D * Math.cos(hop.angle), r) - hop.lift;
+    footDistance(); // make sure the point cache is fresh
+    const cy = groundY - lowestAt(hop.angle) - hop.lift; // the real lowest point touches the ground
     c.save();
     c.translate(hop.cx, cy);
     c.rotate(hop.angle);

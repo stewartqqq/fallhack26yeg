@@ -73,29 +73,39 @@ window.Speech = (function () {
     const lines = wrap(c, line.text, cfg.maxWidth);
     const lh = cfg.fontSize * 1.25;
     const textW = Math.max(...lines.map((l) => c.measureText(l).width));
+    const textH = lines.length * lh;
     const w = textW + cfg.padX * 2;
-    const h = lines.length * lh + cfg.padY * 2;
+    const h = textH + cfg.padY * 2;
     const bump = cfg.bump;
 
-    // Up and to the right of the mouth, kept on screen.
-    let cx = ax + w * 0.35 + 20;
-    let cy = ay - h / 2 - 34;
-    cx = Math.max(w / 2 + bump + 8, Math.min(maxX - w / 2 - bump - 8, cx));
-    cy = Math.max(h / 2 + bump + 6, cy);
+    // Beside the pet (right of the mouth, or left of the head if there's no room),
+    // a little higher than the mouth, kept on screen.
+    const rx = w / 2, ry = h / 2;
+    const reach = rx + bump; // cloud's half-width including bumps
+    const roomRight = maxX - 8 - (ax + cfg.gap);
+    const roomLeft = ax - cfg.headWidth - cfg.gap - 8;
+    const fits = Math.max(roomRight, roomLeft) >= reach * 2;
+    const right = roomRight >= reach * 2 || (!fits && roomRight >= roomLeft);
+    let cx = right ? ax + cfg.gap + reach : ax - cfg.headWidth - cfg.gap - reach;
+    cx = Math.max(reach + 8, Math.min(maxX - reach - 8, cx));
+    // Squeezed in next to the head: go as high as possible so it covers less of it.
+    const top = ry + bump + 6;
+    const cy = fits ? Math.max(top, ay - cfg.lift) : top;
 
     // Cloud outline: stroke a ring of bumps, then fill over their insides.
-    const rx = w / 2, ry = h / 2;
-    const count = Math.max(8, Math.round((Math.PI * (rx + ry)) / (bump * 1.4)));
+    const count = Math.max(6, Math.round((Math.PI * (rx + ry)) / (bump * cfg.bumpSpacing)));
     const bumps = [];
     for (let i = 0; i < count; i++) {
       const a = (i / count) * Math.PI * 2;
       bumps.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry, bump * (0.85 + 0.3 * Math.abs(jitter(i + 7)))]);
     }
-    // Tail: two little puffs leading down to the mouth.
-    const ex = cx + (ax - cx) * 0.55, ey = cy + ry + bump * 0.4;
+    // Tail: two little puffs from the cloud's edge toward the mouth.
+    const toMouth = Math.atan2(ay - cy, ax - cx);
+    const ex = cx + Math.cos(toMouth) * (rx + bump * 0.6);
+    const ey = cy + Math.sin(toMouth) * (ry + bump * 0.6);
     const puffs = [
       [ex + (ax - ex) * 0.3, ey + (ay - ey) * 0.3, 6],
-      [ex + (ax - ex) * 0.65, ey + (ay - ey) * 0.65, 3.5],
+      [ex + (ax - ex) * 0.68, ey + (ay - ey) * 0.68, 3.5],
     ];
 
     c.lineWidth = 2.5;
