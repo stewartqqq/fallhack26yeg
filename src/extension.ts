@@ -9,7 +9,7 @@ type ToWebview =
   | { type: 'reset' }
   | { type: 'replay' }
   | { type: 'getHeist'; id: number }
-  | { type: 'petAway'; away: boolean };
+  | { type: 'petAway'; away: boolean; landX?: number };
 
 type HeistConfig = {
   line: string;
@@ -23,13 +23,17 @@ type HeistConfig = {
 type FromWebview =
   | { type: 'stage'; stage: string }
   | { type: 'log'; text: string }
-  | { type: 'heist'; id: number; png: string; heist: HeistConfig };
+  | ({ type: 'heist'; id: number } & HeistReply);
+
+/** Where the pet is in the panel, in screen coordinates (null until the user has touched the panel). */
+type HeistPanel = { petX: number; groundY: number; minX: number; maxX: number } | null;
+type HeistReply = { png: string; heist: HeistConfig; panel: HeistPanel; margin: number; endScale: number };
 
 class SidekickViewProvider implements vscode.WebviewViewProvider {
   static readonly viewId = 'sidekick.view';
 
   private view?: vscode.WebviewView;
-  private heistRequests = new Map<number, (r: { png: string; heist: HeistConfig }) => void>();
+  private heistRequests = new Map<number, (r: HeistReply) => void>();
   private nextId = 1;
   /** Current stage as reported by the webview. Used later for editor detection. */
   stage = 'character';
@@ -65,9 +69,9 @@ class SidekickViewProvider implements vscode.WebviewViewProvider {
   }
 
   /** Ask the webview for the pet PNG + heist config (positions, line). */
-  async requestHeist(): Promise<{ png: string; heist: HeistConfig } | undefined> {
+  async requestHeist(): Promise<HeistReply | undefined> {
     const id = this.nextId++;
-    const reply = new Promise<{ png: string; heist: HeistConfig }>((resolve) =>
+    const reply = new Promise<HeistReply>((resolve) =>
       this.heistRequests.set(id, resolve)
     );
     await this.post({ type: 'getHeist', id });
@@ -170,11 +174,15 @@ class Overlay {
     this.listeners.push(fn);
   }
 
-  heist(png: string, h: HeistConfig) {
+  heist({ png, heist: h, panel, margin, endScale }: HeistReply) {
     this.start();
     const line = h.line.replace(/[\t\r\n]/g, ' ');
     this.proc!.stdin.write(
-      ['heist', line, h.startXFrac, h.startYFromBottom, h.chatXFromRight, h.chatYFrac, png].join('\t') + '\n'
+      [
+        'heist', line, h.startXFrac, h.startYFromBottom, h.chatXFromRight, h.chatYFrac,
+        panel ? 1 : 0, panel?.petX ?? 0, panel?.groundY ?? 0, panel?.minX ?? 0, panel?.maxX ?? 0,
+        margin, endScale, png,
+      ].join('\t') + '\n'
     );
   }
 
@@ -192,14 +200,18 @@ export function activate(context: vscode.ExtensionContext) {
   // Chat heist: we own the chat shortcut, so we know exactly when chat gets opened.
   let heistRunning = false;
   let heistSafety: NodeJS.Timeout | undefined;
-  const endHeist = () => {
+  const endHeist = (landX?: number) => {
     clearTimeout(heistSafety);
     heistRunning = false;
-    provider.post({ type: 'petAway', away: false });
+    provider.post({ type: 'petAway', away: false, landX });
   };
   overlay.onLine((line) => {
     if (line === 'kick') vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
-    else if (line === 'done') endHeist();
+    else if (line.startsWith('done')) {
+      // "done <screen x>": where it landed back in the panel
+      const x = parseFloat(line.split(' ')[1]);
+      endHeist(Number.isFinite(x) ? x : undefined);
+    }
   });
 
   const chatHeist = async () => {
@@ -215,8 +227,8 @@ export function activate(context: vscode.ExtensionContext) {
     // Let the chat finish opening so the pet visibly "notices" it.
     await new Promise((r) => setTimeout(r, 500));
     provider.post({ type: 'petAway', away: true });
-    overlay.heist(req.png, req.heist);
-    heistSafety = setTimeout(endHeist, 12000); // never leave the pet stranded
+    overlay.heist(req);
+    heistSafety = setTimeout(() => endHeist(), 12000); // never leave the pet stranded
   };
 
   context.subscriptions.push(

@@ -823,9 +823,10 @@
     };
   }
 
+  const PNG_MARGIN = 10; // empty space around the pet in the exported PNG (feet sit this far above its bottom)
   function petPng() {
     const r = CFG.pet.bodyRadius * CFG.heist.petScale;
-    const margin = 10;
+    const margin = PNG_MARGIN;
     const w = r * 2 + margin * 2;
     const h = r * 2 + r * 1.1 + margin * 2;
     const density = 2; // render at 2x so it stays crisp on HiDPI screens
@@ -846,8 +847,12 @@
     if (msg.type === 'next') next();
     else if (msg.type === 'reset') reset();
     else if (msg.type === 'getHeist') {
-      vscode.postMessage({ type: 'heist', id: msg.id, png: petPng(), heist: CFG.heist });
+      vscode.postMessage({
+        type: 'heist', id: msg.id, png: petPng(), heist: CFG.heist,
+        panel: heistPanel(), margin: PNG_MARGIN, endScale: 1 / CFG.heist.petScale,
+      });
     } else if (msg.type === 'petAway') {
+      if (!msg.away) landPetAt(msg.landX);
       state.petAway = msg.away;
     } else if (msg.type === 'replay') {
       // Phase 8: submit recorded strokes for the current part.
@@ -860,6 +865,35 @@
   document.addEventListener('pointerdown', (e) => {
     if (e.target.closest('.btn, .choice')) Sound.click();
   });
+  // Where this panel sits on the screen. Pointer events carry both screen and
+  // panel coordinates, so any click or drawing stroke tells us. The chat heist
+  // uses it to jump out of, and land back in, the exact right spot.
+  let screenOffset = null;
+  const trackOffset = (e) => (screenOffset = { x: e.screenX - e.clientX, y: e.screenY - e.clientY });
+  document.addEventListener('pointerdown', trackOffset, true);
+  document.addEventListener('pointermove', trackOffset, true);
+
+  // Where the pet is (and where it may land) in screen coordinates, for the overlay.
+  function heistPanel() {
+    if (!screenOffset) return null;
+    const r = CFG.pet.bodyRadius;
+    const cardLeft = card.classList.contains('hidden') ? stageSize.width : card.offsetLeft;
+    return {
+      petX: screenOffset.x + (state.petX ?? cardLeft / 2),
+      groundY: screenOffset.y + stageSize.height - CFG.pet.groundOffset,
+      minX: screenOffset.x + 24 + r,
+      maxX: screenOffset.x + cardLeft - r - 12,
+    };
+  }
+
+  // The overlay dropped the pet back into the panel at screen x: continue from there.
+  function landPetAt(screenX) {
+    if (screenX == null || !screenOffset) return;
+    const x = screenX - screenOffset.x;
+    state.petX = x;
+    roll.x = x;
+    if (state.parts.leg1 && !state.parts.leg2) resetHop(); // lands upright, then carries on hopping
+  }
 
   resize();
   goTo(state.stage);

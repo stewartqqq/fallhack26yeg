@@ -1,8 +1,10 @@
 # Desktop overlay for the "chat heist" joke.
 # A transparent, click-through, always-on-top window that never takes focus.
 # The extension spawns this once and talks to it over stdin/stdout, one line per message:
-#   in : heist <TAB> line <TAB> startXFrac <TAB> startYFromBottom <TAB> chatXFromRight <TAB> chatYFrac <TAB> base64 png
-#   out: ready | kick (close the chat now) | done (pet is back in the panel)
+#   in : heist <TAB> line <TAB> startXFrac <TAB> startYFromBottom <TAB> chatXFromRight <TAB> chatYFrac
+#              <TAB> hasPanel <TAB> petX <TAB> groundY <TAB> minX <TAB> maxX   (panel position, screen DIPs)
+#              <TAB> margin <TAB> endScale <TAB> base64 png
+#   out: ready | kick (close the chat now) | done <screen x where it landed back in the panel>
 param([string]$FontDir)
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
@@ -60,8 +62,10 @@ public static class SidekickOverlay
     static int stepIndex = -1;
     static Stopwatch clock = new Stopwatch();
 
-    // Pet position: bottom-center of the image, in window coordinates.
+    // Pet position: where its feet are (bottom-center minus the PNG margin), in window coordinates.
     static double px, py;
+    // Displayed size relative to the overlay PNG (endScale = same size as the pet in the panel).
+    static double size = 1, baseW, baseH, margin, landLeft;
 
     public static void Run(string fontDir)
     {
@@ -147,14 +151,16 @@ public static class SidekickOverlay
     static void Handle(string line)
     {
         string[] f = line.Split('\t');
-        if (f[0] == "heist" && f.Length >= 7)
+        if (f[0] == "heist" && f.Length >= 14)
         {
-            try { Heist(f[1], Num(f[2]), Num(f[3]), Num(f[4]), Num(f[5]), f[6]); }
+            try { Heist(f[1], Num(f[2]), Num(f[3]), Num(f[4]), Num(f[5]), f[6] == "1", Num(f[7]), Num(f[8]), Num(f[9]), Num(f[10]), Num(f[11]), Num(f[12]), f[13]); }
             catch (Exception e) { Console.Error.WriteLine(e.ToString()); Send("done"); }
         }
     }
 
-    static void Heist(string text, double startXFrac, double startYFromBottom, double chatXFromRight, double chatYFrac, string png)
+    static void Heist(string text, double startXFrac, double startYFromBottom, double chatXFromRight, double chatYFrac,
+                      bool hasPanel, double panelPetX, double panelGroundY, double panelMinX, double panelMaxX,
+                      double pngMargin, double endScale, string png)
     {
         // Cover the VS Code window (it's in the foreground: the user just pressed the shortcut there).
         RECT r;
@@ -166,6 +172,7 @@ public static class SidekickOverlay
         win.Left = tl.X; win.Top = tl.Y;
         win.Width = br.X - tl.X; win.Height = br.Y - tl.Y;
         double W = win.Width, H = win.Height;
+        landLeft = win.Left; // the window moves offscreen at the end, remember where it was
 
         var bmp = new BitmapImage();
         bmp.BeginInit();
@@ -173,16 +180,26 @@ public static class SidekickOverlay
         bmp.CacheOption = BitmapCacheOption.OnLoad;
         bmp.EndInit();
         pet.Source = bmp;
-        pet.Width = bmp.PixelWidth / 2.0;  // PNG is rendered at 2x
-        pet.Height = bmp.PixelHeight / 2.0;
+        baseW = bmp.PixelWidth / 2.0;  // PNG is rendered at 2x
+        baseH = bmp.PixelHeight / 2.0;
+        margin = pngMargin;
 
-        double sx = W * startXFrac, sy = H - startYFromBottom;
+        // Start at the pet's real spot in the panel (feet on the panel's ground line), at
+        // the panel pet's size. Without panel info, fall back to the configured guess.
+        double sx = hasPanel ? panelPetX - win.Left : W * startXFrac;
+        double sy = hasPanel ? panelGroundY - win.Top : H - startYFromBottom;
         double cx = W - chatXFromRight, cy = H * chatYFrac;
-        px = sx; py = sy;
+        // Land straight below the kick, inside the panel's free stage area.
+        double lx = hasPanel ? Math.Max(panelMinX - win.Left, Math.Min(panelMaxX - win.Left, cx)) : sx;
+        double small = hasPanel ? endScale : 1;
+        px = sx; py = sy; size = small;
 
         steps.Clear();
         // pop out of the panel: squash, then appear
-        Add(160, delegate { pet.Visibility = Visibility.Visible; }, delegate (double t) { petScale.ScaleY = 1 - 0.25 * Math.Sin(Math.PI * t); });
+        Add(160, delegate { pet.Visibility = Visibility.Visible; }, delegate (double t) {
+            petScale.ScaleY = 1 - 0.25 * Math.Sin(Math.PI * t);
+            size = Lerp(small, 1, Ease(t));
+        });
         // three clumsy hops up to the chat
         for (int i = 1; i <= 3; i++)
         {
@@ -231,27 +248,27 @@ public static class SidekickOverlay
         // tumble back toward the panel — the spin eases out so it settles upright
         // instead of still spinning at full speed the instant it touches down.
         double fx = cx, fy = cy; // where the recoil leaves it
-        Add(600, null, delegate (double t) {
+        Add(650, null, delegate (double t) {
             double e = Ease(t);
-            px = Lerp(fx, sx, t);
-            py = Lerp(fy, sy, t) - 130 * 4 * t * (1 - t);
+            px = Lerp(fx, lx, t);
+            py = Lerp(fy, sy, t * t) - 70 * 4 * t * (1 - t); // small hop up, then gravity
             petRot.Angle = 360 * e;
+            size = Lerp(1, small, e);
         });
-        // impact: it compresses on landing, then a small residual bounce
+        // impact: it compresses on landing, then a small residual bounce, right where it fell
         Add(90, null, delegate (double t) { petScale.ScaleY = 1 - 0.3 * Math.Sin(Math.PI * t); });
         Add(130, null, delegate (double t) {
             petScale.ScaleY = 1 - 0.1 * Math.Sin(Math.PI * t);
             py = sy - 9 * Math.Sin(Math.PI * t);
         });
-        // sits for a beat before ducking back down into the panel
-        Add(180, null, delegate (double t) { petScale.ScaleY = 1; });
-        Add(120, null, delegate (double t) { petScale.ScaleY = 1 - 0.3 * Ease(t); });
+        // hand over to the panel pet at exactly this spot
         Add(10, delegate {
             pet.Visibility = Visibility.Hidden;
             petRot.Angle = 0;
             petScale.ScaleY = 1;
+            py = sy;
             win.Left = -20000; win.Top = -20000; win.Width = 10; win.Height = 10;
-            Send("done");
+            Send("done " + (landLeft + lx).ToString(CultureInfo.InvariantCulture));
         }, null);
 
         stepIndex = -1;
@@ -300,8 +317,10 @@ public static class SidekickOverlay
             if (t < 1) break;
             NextStep();
         }
+        pet.Width = baseW * size;
+        pet.Height = baseH * size;
         Canvas.SetLeft(pet, px - pet.Width / 2);
-        Canvas.SetTop(pet, py - pet.Height);
+        Canvas.SetTop(pet, py + margin * size - pet.Height); // feet on py
         if (bubble.Visibility == Visibility.Visible)
         {
             // bubble sits up-left of the pet, right edge anchored so typing grows leftwards
