@@ -330,7 +330,6 @@
     const legLen = r * 1.1;
     const cy = groundY - legLen - r;
     const ink = cssVar('--ink');
-    const muted = cssVar('--ink-muted');
 
     const place = (strokes, x, y, size, anchor, color) => {
       c.save();
@@ -339,8 +338,12 @@
       c.restore();
     };
 
-    if (P.legRight) place(P.legRight, cx + 3, cy + r - 2, legLen, 'top', muted); // back leg
-    if (P.legLeft) place(P.legLeft, cx - 3, cy + r - 2, legLen, 'top', ink);
+    // One leg stands in the middle; once the second is drawn, the first shifts
+    // right and the second goes on the left.
+    const hipY = cy + r - 2;
+    const spread = P.leg2 ? r * CFG.pet.legSpread : 0;
+    if (P.leg1) place(P.leg1, cx + spread, hipY, legLen, 'top', ink);
+    if (P.leg2) place(P.leg2, cx - spread, hipY, legLen, 'top', ink);
     if (P.body) place(P.body, cx, cy, r * 2, 'center', ink);
     if (P.mouth) place(P.mouth, cx + r * 0.55, cy + r * 0.15, r * 0.4, 'center', ink);
     if (P.eyes) place(P.eyes, cx + r * 0.3, cy - r * 0.3, r * 0.5, 'center', ink);
@@ -461,7 +464,7 @@
         // Center the pet in the free space left of the drawing card.
         const cardLeft = card.classList.contains('hidden') ? width : card.offsetLeft;
         // Just a circle so far (drawn, no legs yet): it rolls around.
-        if (state.parts.body && !state.parts.legLeft) {
+        if (state.parts.body && !state.parts.leg1) {
           updateRoll(dt, cardLeft);
           drawRollingCircle(ctx, groundY);
         } else {
@@ -485,8 +488,8 @@
     const leg = [{ x: 0, y: 0 }, { x: -6, y: 18 }, { x: 2, y: 36 }, { x: 16, y: 37 }];
     return {
       body: [circle],
-      legLeft: [leg],
-      legRight: [leg.map((p) => ({ x: p.x + 4, y: p.y }))],
+      leg1: [leg],
+      leg2: [leg.map((p) => ({ x: p.x + 4, y: p.y }))],
       mouth: [[{ x: 0, y: 0 }, { x: 12, y: -1 }]],
     };
   }

@@ -21,15 +21,15 @@ window.SIDEKICK = {
   // Which body part the next drawing becomes, per stage (fake recognition).
   drawPart: {
     circle: 'body',
-    oneLeg: 'legLeft',
-    twoLegs: 'legRight',
+    oneLeg: 'leg1',
+    twoLegs: 'leg2',
     mouth: 'mouth',
     eyes: 'eyes',
   },
   partLabel: {
     body: 'Circle',
-    legLeft: 'Leg',
-    legRight: 'Leg',
+    leg1: 'Leg',
+    leg2: 'Leg',
     mouth: 'Mouth',
     eyes: 'Eyes',
   },
@@ -47,6 +47,7 @@ window.SIDEKICK = {
     bodyRadius: 34,  // px on stage; drawn circle is scaled to this
     groundOffset: 28, // ground line distance from bottom of stage
     strokeWidth: 3,
+    legSpread: 0.3,   // with two legs: each hip sits this × bodyRadius left/right of center
   },
 
   // Phase 4: once the circle is drawn (and until the first leg is), the body
