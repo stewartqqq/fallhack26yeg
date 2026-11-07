@@ -497,10 +497,27 @@
   // ---------------------------------------------------------------------------
   const hop = { footX: 0, cx: 0, angle: 0, lift: 0, squash: 0, dir: 1, phase: 'balance', t: 0, dur: 1, from: 0, hopsLeft: 0, tries: 0, omega: 0, legSrc: null, D: 0 };
 
-  function resetHop() {
-    Object.assign(hop, { footX: state.petX ?? stageSize.width / 2, angle: 0, lift: 0, squash: 0, dir: 1, omega: 0, tries: 0 });
-    hop.cx = hop.footX;
-    setHopPhase('balance');
+  // fallen = true: the new leg sticks out sideways from the circle lying on the ground,
+  // and it can't get itself up. false: starts standing (e.g. after you helped it up).
+  function resetHop(fallen = true) {
+    Object.assign(hop, { angle: 0, lift: 0, squash: 0, dir: 1, omega: 0 });
+    hop.cx = state.petX ?? stageSize.width / 2;
+    const D = footDistance();
+    if (fallen) {
+      const r = CFG.pet.bodyRadius;
+      hop.fallDir = roll.dir || 1;
+      hop.lying = Math.acos(Math.min(1, r / D)) * hop.fallDir;
+      hop.angle = hop.lying;
+      setHopPhase('lie');
+    } else setHopPhase('balance');
+    hop.footX = hop.cx - D * Math.sin(hop.angle);
+  }
+
+  // You picked it up and put it down: it ends up on its foot and wobbles upright.
+  function helpUp() {
+    hop.lift = 0;
+    hop.squash = 0;
+    setHopPhase('settle', CFG.oneLeg.settleSec);
   }
 
   // Distance from body center to the foot, measured from the actual leg drawing.
@@ -626,15 +643,18 @@
       case 'lie':
         hop.angle = hop.lying + (k < 0.6 && Math.random() < 0.1 ? (Math.random() - 0.5) * 0.08 : 0); // twitch
         if (k >= 1) {
-          const fail = hop.tries < H.maxFailedGetUps && Math.random() < H.getUpFailChance;
-          hop.tries = fail ? hop.tries + 1 : 0;
-          setHopPhase(fail ? 'tryUp' : 'getUp', fail ? H.failSec : H.getUpSec);
+          // Can't do it alone (getUpChance 0): it needs you to pick it up.
+          if (Math.random() < H.getUpChance) setHopPhase('getUp', H.getUpSec);
+          else {
+            hop.tryAmp = rand(...H.tryAmp);
+            setHopPhase('tryUp', rand(...H.failSec));
+          }
         }
         break;
       case 'tryUp':
-        // gets about halfway… and flops back down
-        hop.angle = hop.lying * (1 - 0.6 * Math.sin(Math.PI * k));
-        if (k >= 1) setHopPhase('lie', 0.4);
+        // strains part of the way up… and flops back down
+        hop.angle = hop.lying * (1 - hop.tryAmp * Math.sin(Math.PI * k));
+        if (k >= 1) setHopPhase('lie');
         break;
       case 'getUp':
         // swings up past upright, a little too far
@@ -724,6 +744,7 @@
     poke.dragging = false;
     poke.targetX = null;
     petFlinch(poke.moved);
+    if (state.parts.leg1 && !state.parts.leg2) helpUp(); // picked up = helped up
   }
   stage.addEventListener('pointerup', endPoke);
   stage.addEventListener('pointercancel', endPoke);
@@ -780,9 +801,10 @@
           state.petX = roll.x;
           state.bodyAngle = roll.angle;
         } else if (state.parts.leg1 && !state.parts.leg2) {
-          // One leg: hop, fall, get up. Picked up: it just dangles wherever you drag it.
-          if (poke.dragging && poke.targetX != null) {
-            hop.cx = poke.targetX;
+          // One leg: hop, fall, can't get up. Picked up: it dangles upright wherever you drag it.
+          if (poke.dragging) {
+            if (poke.targetX != null) hop.cx = poke.targetX;
+            hop.angle *= 0.85; // hangs straight down from your "hand"
             hop.footX = hop.cx - footDistance() * Math.sin(hop.angle);
           } else updateHop(dt, cardLeft);
           petScreenX = hop.cx;
@@ -896,7 +918,7 @@
     const x = screenX - screenOffset.x;
     state.petX = x;
     roll.x = x;
-    if (state.parts.leg1 && !state.parts.leg2) resetHop(); // lands upright, then carries on hopping
+    if (state.parts.leg1 && !state.parts.leg2) resetHop(false); // lands upright, then carries on hopping
   }
 
   resize();

@@ -60,9 +60,9 @@ window.SIDEKICK = {
     flopSec: 0.45,
     flopOver: 0.35,         // rolls this far past the impact
     lieSec: [0.7, 1.3],
-    getUpFailChance: 0.55,  // tries to get up, gets halfway, flops back down
-    maxFailedGetUps: 2,
-    failSec: 0.6,
+    getUpChance: 0,         // 0 = it can never get up on its own; you have to pick it up
+    tryAmp: [0.25, 0.7],    // how far each failed attempt gets (fraction of the way up)
+    failSec: [0.45, 0.8],
     getUpSec: 0.6,
     overshoot: 0.22,        // swings past upright by this much…
     settleSec: 0.7,         // …then wobbles back
@@ -162,7 +162,7 @@ window.SIDEKICK = {
     notes: {
       circle: 'draw a circle.',
       oneLeg: 'now draw a leg.',
-      twoLegs: 'draw another leg, dummy.',
+      twoLegs: 'give it another leg. and perhaps help it stand up.',
       mouth: 'give it a mouth.',
       eyes: 'now draw the eyes.',
     },
