@@ -107,7 +107,7 @@ window.SIDEKICK = {
     analyzing: {
       title: 'Analyzing personality…',
       steps: ['reading your commit history', 'judging your variable names', 'calibrating sarcasm'],
-      locked: 'Personality locked in: Evil Joker.',
+      locked: 'Personality locked in: passive-aggressive coworker.',
     },
     sprite: {
       title: 'Choose a body',

@@ -1,7 +1,7 @@
 {
-  "name": "digital-sidekick",
-  "displayName": "Digital Sidekick",
-  "description": "A hand-drawn evil pet that lives in your panel and roasts your code.",
+  "name": "doodle-in-distress",
+  "displayName": "doodle in distress",
+  "description": "a hand-drawn pet you draw yourself. it lives in your panel and roasts your code.",
   "version": "0.0.1",
   "publisher": "fallhack26yeg",
   "private": true,
@@ -20,7 +20,7 @@
       "panel": [
         {
           "id": "sidekick",
-          "title": "Sidekick",
+          "title": "doodle in distress",
           "icon": "media/icon.svg"
         }
       ]
@@ -30,15 +30,15 @@
         {
           "type": "webview",
           "id": "sidekick.view",
-          "name": "Sidekick"
+          "name": "doodle in distress"
         }
       ]
     },
     "commands": [
-      { "command": "sidekick.next", "title": "Sidekick: Next Stage" },
-      { "command": "sidekick.reset", "title": "Sidekick: Reset" },
-      { "command": "sidekick.replay", "title": "Sidekick: Replay Recorded Drawing" },
-      { "command": "sidekick.chatHeist", "title": "Sidekick: Open Chat (heist)" }
+      { "command": "sidekick.next", "title": "doodle in distress: Next Stage" },
+      { "command": "sidekick.reset", "title": "doodle in distress: Reset" },
+      { "command": "sidekick.replay", "title": "doodle in distress: Replay Recorded Drawing" },
+      { "command": "sidekick.chatHeist", "title": "doodle in distress: Open Chat (heist)" }
     ],
     "keybindings": [
       { "command": "sidekick.next", "key": "ctrl+alt+n", "mac": "cmd+alt+n" },

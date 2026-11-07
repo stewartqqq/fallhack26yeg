@@ -1,4 +1,4 @@
-// Digital Sidekick webview: one state machine drives everything.
+// doodle in distress webview: one state machine drives everything.
 (function () {
   const vscode = acquireVsCodeApi();
   const CFG = window.SIDEKICK;
@@ -102,7 +102,7 @@
     const row = document.createElement('div');
     row.className = 'choices';
     for (const opt of T.character.options) {
-      // Illusion of choice: every option leads to the same evil joker.
+      // Illusion of choice: every option leads to the same passive-aggressive coworker.
       row.appendChild(choiceButton({ icon: opt.face, name: opt.name, desc: opt.desc }, () => next()));
     }
     onboarding.append(title(T.character.title), row);

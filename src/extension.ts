@@ -183,7 +183,7 @@ class Overlay {
 
 export function activate(context: vscode.ExtensionContext) {
   const provider = new SidekickViewProvider(context.extensionUri);
-  const log = vscode.window.createOutputChannel('Sidekick');
+  const log = vscode.window.createOutputChannel('doodle in distress');
   const overlay = new Overlay(context.extensionUri, log);
   overlay.start();
 
