@@ -273,6 +273,7 @@
     state.parts[part] = drawn;
     if (part === 'body') resetRoll(); // start rolling from the middle
     if (part === 'leg1') resetHop();
+    if (part === 'leg2') walker.reset({ x: hop.cx, angle: hop.angle }); // gets up by itself, then walks
     if (part === 'mouth') window.Speech.say(T.lines.mouth); // first words
     clearPad();
     Sound.pop(true);
@@ -350,7 +351,8 @@
 
   // Static placement of drawn parts (Phase 3). Animation comes in Phase 4.
   // Draws the pet standing on (cx, groundY) with body radius r.
-  function drawPet(c, cx, groundY, r, P = state.parts) {
+  // legPose (optional): { a1, a2 } leg angles around the hips, { lift1, lift2 } foot lift.
+  function drawPet(c, cx, groundY, r, P = state.parts, legPose = null) {
     const strokeWidth = CFG.pet.strokeWidth * (r / CFG.pet.bodyRadius);
     const legLen = r * 1.1;
     const cy = groundY - legLen - r;
@@ -370,8 +372,9 @@
     // right and the second goes on the left.
     const hipY = cy + r - 2;
     const spread = P.leg2 ? r * CFG.pet.legSpread : 0;
-    if (P.leg1) place(P.leg1, cx + spread, hipY, legLen, 'top', ink);
-    if (P.leg2) place(P.leg2, cx - spread, hipY, legLen, 'top', ink);
+    const L = legPose || { a1: 0, a2: 0, lift1: 0, lift2: 0 };
+    if (P.leg1) place(P.leg1, cx + spread, hipY - L.lift1, legLen, 'top', ink, null, L.a1);
+    if (P.leg2) place(P.leg2, cx - spread, hipY - L.lift2, legLen, 'top', ink, null, L.a2);
     if (P.body) place(P.body, cx, cy, r * 2, 'center', ink, cssVar('--bg'), state.bodyAngle);
     if (P.mouth) {
       const mx = cx + r * 0.55, my = cy + r * 0.15;
@@ -745,6 +748,7 @@
     poke.targetX = null;
     petFlinch(poke.moved);
     if (state.parts.leg1 && !state.parts.leg2) helpUp(); // picked up = helped up
+    else if (walking()) walker.release();
   }
   stage.addEventListener('pointerup', endPoke);
   stage.addEventListener('pointercancel', endPoke);
@@ -759,6 +763,10 @@
     drawFn();
     ctx.restore();
   }
+
+  // Two legs: walking (walk.js).
+  const walker = window.createWalker({ CFG, state, normalize, drawPet });
+  const walking = () => state.parts.leg2 && !state.parts.mouth;
 
   let lastFrameT = null;
   function frame(t) {
@@ -812,6 +820,16 @@
           petHitR = CFG.pet.bodyRadius * 1.7;
           drawWithPoke(() => drawHop(ctx, groundY - poke.lift), hop.cx, groundY);
           state.petX = hop.footX;
+        } else if (walking()) {
+          // Two legs, no mouth yet: walks around (blind). Picked up: legs kick in the air.
+          const r = CFG.pet.bodyRadius;
+          if (poke.dragging) walker.drag(poke.targetX ?? walker.x, t);
+          else walker.update(dt, 24 + r, Math.max(24 + r, cardLeft - r - 12));
+          petScreenX = walker.x;
+          petScreenY = groundY - r * 1.6;
+          petHitR = r * 1.7;
+          drawWithPoke(() => walker.draw(ctx, groundY - poke.lift), walker.x, groundY);
+          state.petX = walker.x;
         } else {
           if (poke.dragging && poke.targetX != null) state.petX = poke.targetX;
           const cx = state.petX ?? cardLeft / 2;
@@ -919,6 +937,7 @@
     state.petX = x;
     roll.x = x;
     if (state.parts.leg1 && !state.parts.leg2) resetHop(false); // lands upright, then carries on hopping
+    else if (walking()) walker.reset({ x });
   }
 
   resize();

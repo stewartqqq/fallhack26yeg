@@ -59,7 +59,11 @@ Hidden demo controls (work anywhere in the dev window, also in the Command Palet
 - [x] oneLeg: wobbles (worse over time), hops 1–3 times, often tips over (pendulum on the foot), body
       slams and rolls, lies there twitching, fails to get up (up to 2×), finally swings up past upright
       and wobbles back. Never sinks below ground, never falls into a wall. Tunables: `config.js → oneLeg`
-- [ ] twoLegs: walk cycle (legs swing around hips, body bob), trip → fall ~90° → lie → get up
+- [x] oneLeg: can't get up on its own; picking it up (drag/click) helps it stand
+- [x] twoLegs (`walk.js`): real walk cycle (planted foot never slides, swing foot lifts), lean + bob,
+      uneven steps, stumbles, pauses, paper-flip turns. Blind: walks into walls, falls on its back,
+      legs flail, gets up (sometimes 2nd try), turns around. Rare trip over nothing. Drawing the 2nd
+      leg makes the fallen one-legger finally get up by itself. Tunables: `config.js → twoLegs`
 
 ### Phase 5 — Speech bubbles + mouth/eyes
 - [x] Creature speaks in a **cloud** (scalloped, puffs down to the mouth), follows pet, typewriter text
