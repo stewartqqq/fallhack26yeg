@@ -60,12 +60,40 @@ window.SIDEKICK = {
     flopSec: 0.45,
     flopOver: 0.35,         // rolls this far past the impact
     lieSec: [0.7, 1.3],
-    getUpFailChance: 0.55,  // tries to get up, gets halfway, flops back down
-    maxFailedGetUps: 2,
-    failSec: 0.6,
+    getUpChance: 0,         // 0 = it can never get up on its own; you have to pick it up
+    tryAmp: [0.25, 0.7],    // how far each failed attempt gets (fraction of the way up)
+    failSec: [0.45, 0.8],
     getUpSec: 0.6,
     overshoot: 0.22,        // swings past upright by this much…
     settleSec: 0.7,         // …then wobbles back
+  },
+
+  // Two legs: walking (walk.js). Angles in radians.
+  twoLegs: {
+    stepAngle: [0.28, 0.45], // how far the legs swing per step
+    stepSec: [0.3, 0.42],    // time per step
+    liftHeight: [3, 7],      // swing foot lifts this many px
+    lean: 0.05,              // walks leaning forward a bit
+    bob: 0.025,              // body wobble per step
+    stepsInARow: [4, 10],    // then stops for a moment
+    standSec: [0.5, 1.3],
+    turnChance: 0.4,         // after standing: turns around (paper flip) this often
+    turnSec: 0.28,
+    stumbleChance: 0.12,     // short, jerky step
+    stumbleJolt: 0.2,
+    tripChance: 0.015,       // per step: trips over nothing and falls on its face
+    bonkKick: 2.2,           // walks into the wall (it's blind) and falls back this hard
+    tipKick: 0.8,
+    tipGravity: 14,
+    flopSec: 0.4,
+    flopOver: 0.3,
+    lieSec: [0.6, 1.1],
+    flail: 0.35,             // legs kicking while it lies there
+    failFirstTry: 0.3,       // sometimes the first get-up attempt fails
+    failSec: 0.5,
+    getUpSec: 0.55,
+    overshoot: 0.15,
+    settleSec: 0.6,
   },
 
   // The creature's speech cloud (speech.js).
@@ -162,7 +190,7 @@ window.SIDEKICK = {
     notes: {
       circle: 'draw a circle.',
       oneLeg: 'now draw a leg.',
-      twoLegs: 'draw another leg, dummy.',
+      twoLegs: 'give it another leg. and perhaps help it stand up.',
       mouth: 'give it a mouth.',
       eyes: 'now draw the eyes.',
     },

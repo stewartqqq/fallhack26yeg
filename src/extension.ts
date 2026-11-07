@@ -130,6 +130,7 @@ class SidekickViewProvider implements vscode.WebviewViewProvider {
   <script nonce="${nonce}" src="${media('webview', 'sound.js')}"></script>
   <script nonce="${nonce}" src="${media('webview', 'scenery.js')}"></script>
   <script nonce="${nonce}" src="${media('webview', 'speech.js')}"></script>
+  <script nonce="${nonce}" src="${media('webview', 'walk.js')}"></script>
   <script nonce="${nonce}" src="${media('webview', 'main.js')}"></script>
 </body>
 </html>`;
