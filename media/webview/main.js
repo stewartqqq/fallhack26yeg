@@ -713,7 +713,11 @@
     if (Math.abs(e.offsetX - poke.lastX) > 2) poke.moved = true;
     poke.vx = e.offsetX - poke.lastX;
     poke.lastX = e.offsetX;
-    poke.targetX = e.offsetX - poke.grabOffset;
+    // Keep it on the open stage: between the left edge and the drawing card.
+    const r = CFG.pet.bodyRadius;
+    const cardLeft = card.classList.contains('hidden') ? stageSize.width : card.offsetLeft;
+    const min = 24 + r, max = Math.max(min, cardLeft - r - 12);
+    poke.targetX = Math.max(min, Math.min(max, e.offsetX - poke.grabOffset));
   });
   function endPoke(e) {
     if (!poke.dragging || e.pointerId !== poke.pointerId) return;
