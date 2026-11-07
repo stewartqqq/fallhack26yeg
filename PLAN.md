@@ -47,7 +47,7 @@ Hidden demo controls (work anywhere in the dev window, also in the Command Palet
 ### Phase 3 — Drawing → parts on stage (partly done)
 - [x] Drawing pad in floating card, stroke capture, Done / Clear
 - [x] ~~Fake recognition toast~~ replaced by an app note in the top-right that says what to draw next
-      ("draw a circle." → "now draw a leg." → "draw another leg, dumbass." …), always the app, never the creature, text in `config.js → text.notes`
+      ("draw a circle." → "now draw a leg." → "draw another leg, dummy." …), always the app, never the creature, text in `config.js → text.notes`
 - [x] Normalize strokes (scale + anchor) and place parts statically on the pet
 - [ ] Tune attachment points/sizes against real drawings
 - [ ] Decide eyes vs. no-eyes (see open questions)

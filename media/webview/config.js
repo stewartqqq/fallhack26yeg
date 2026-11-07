@@ -162,7 +162,7 @@ window.SIDEKICK = {
     notes: {
       circle: 'draw a circle.',
       oneLeg: 'now draw a leg.',
-      twoLegs: 'draw another leg, dumbass.',
+      twoLegs: 'draw another leg, dummy.',
       mouth: 'give it a mouth.',
       eyes: 'now draw the eyes.',
     },
