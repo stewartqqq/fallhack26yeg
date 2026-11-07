@@ -195,7 +195,7 @@ html, body {
 .btn.primary:hover { background: var(--accent-hover); }
 
 /* ---------- Toast ---------- */
-#toast {
+#note {
   position: absolute;
   right: calc(var(--card-width) + 24px);
   top: 14px;
@@ -212,3 +212,11 @@ html, body {
 /* clumsy() in main.js wraps each letter in a span with a small random tilt/hop. */
 .cw { white-space: nowrap; }
 .cl { display: inline-block; }
+
+/* note "pop" when it changes */
+@keyframes note-pop {
+  0% { transform: rotate(-2deg) scale(0.85); }
+  60% { transform: rotate(-3deg) scale(1.06); }
+  100% { transform: rotate(-2deg) scale(1); }
+}
+#note.pop { animation: note-pop 260ms ease-out; }

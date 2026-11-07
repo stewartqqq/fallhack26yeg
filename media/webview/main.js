@@ -7,7 +7,7 @@
   const $ = (id) => document.getElementById(id);
   const onboarding = $('onboarding');
   const card = $('card');
-  const toastEl = $('toast');
+  const noteEl = $('note');
 
   // ---------------------------------------------------------------------------
   // State machine
@@ -16,7 +16,7 @@
     stage: CFG.stages[0],
     parts: {},   // partName -> strokes (arrays of {x, y} in pad pixels)
     timers: [],  // cleared on every stage change so forced skips never leave stale callbacks
-    busy: false, // true while a fake "Recognizing…" is in flight
+    busy: false, // true while a drawing submission is being handled
     petX: null,  // where the pet stands on stage (null = center); kept from wherever it last rolled to
     bodyAngle: 0, // body rotation it ended up at after rolling, so the drawing doesn't snap back
   };
@@ -44,8 +44,8 @@
     state.petX = null;
     state.bodyAngle = 0;
     resetRoll();
+    window.Speech.clear();
     clearPad();
-    hideToast();
     goTo(CFG.stages[0]);
   }
 
@@ -61,6 +61,7 @@
     card.classList.toggle('hidden', ONBOARDING.includes(s));
     const tokensVisible = ['roasted', 'tokens', 'pointing'].includes(s);
     $('btn-tokens').classList.toggle('hidden', !tokensVisible);
+    showNote();
   }
 
   // ---------------------------------------------------------------------------
@@ -187,18 +188,28 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Toast
+  // App note (top-right): tells you what to draw next. This is the app talking;
+  // the creature itself talks in a cloud (speech.js).
   // ---------------------------------------------------------------------------
-  let toastTimer;
-  function toast(text, ms = CFG.timing.toastMs) {
-    clearTimeout(toastTimer);
-    clumsy(toastEl, text);
-    toastEl.classList.remove('hidden');
-    if (ms) toastTimer = setTimeout(hideToast, ms);
+  let noteTimer;
+  function setNote(text) {
+    if (!text) return noteEl.classList.add('hidden');
+    clumsy(noteEl, text);
+    noteEl.classList.remove('hidden');
+    // replay the little "pop" so changes get noticed
+    noteEl.classList.remove('pop');
+    void noteEl.offsetWidth;
+    noteEl.classList.add('pop');
   }
-  function hideToast() {
-    clearTimeout(toastTimer);
-    toastEl.classList.add('hidden');
+  function showNote() {
+    clearTimeout(noteTimer);
+    setNote(T.notes[state.stage]);
+  }
+  /** Temporarily replace the note, then go back to the stage's note. */
+  function flashNote(text) {
+    setNote(text);
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(showNote, CFG.timing.flashNoteMs);
   }
 
   // ---------------------------------------------------------------------------
@@ -256,17 +267,14 @@
   function submitDrawing(drawn) {
     const part = CFG.drawPart[state.stage];
     if (!part || state.busy) return; // not a drawing stage, or already submitting
-    if (!drawn.length) return toast(T.draw.empty);
+    if (!drawn.length) return flashNote(T.draw.empty);
 
     state.parts[part] = drawn;
     if (part === 'body') resetRoll(); // start rolling from the middle
-    state.busy = true;
+    if (part === 'leg1') resetHop();
+    if (part === 'mouth') window.Speech.say(T.lines.mouth); // first words
     clearPad();
-    toast(T.draw.recognizing, 0);
-    later(CFG.timing.recognizingMs, () => {
-      toast(T.draw.detected(CFG.partLabel[part]));
-      next();
-    });
+    next();
   }
 
   $('btn-done').addEventListener('click', () => submitDrawing(strokes));
@@ -363,7 +371,21 @@
     if (P.leg1) place(P.leg1, cx + spread, hipY, legLen, 'top', ink);
     if (P.leg2) place(P.leg2, cx - spread, hipY, legLen, 'top', ink);
     if (P.body) place(P.body, cx, cy, r * 2, 'center', ink, cssVar('--bg'), state.bodyAngle);
-    if (P.mouth) place(P.mouth, cx + r * 0.55, cy + r * 0.15, r * 0.4, 'center', ink);
+    if (P.mouth) {
+      const mx = cx + r * 0.55, my = cy + r * 0.15;
+      const open = Math.sin((performance.now() / 1000) * CFG.speech.mouthHz * Math.PI * 2) > 0;
+      if (c === ctx && window.Speech.talking() && open) {
+        c.save();
+        c.beginPath();
+        c.ellipse(mx, my, r * 0.11, r * 0.17, 0, 0, Math.PI * 2);
+        c.fillStyle = cssVar('--bg');
+        c.fill();
+        c.strokeStyle = ink;
+        c.lineWidth = strokeWidth;
+        c.stroke();
+        c.restore();
+      } else place(P.mouth, mx, my, r * 0.4, 'center', ink);
+    }
     if (P.eyes) place(P.eyes, cx + r * 0.3, cy - r * 0.3, r * 0.5, 'center', ink);
   }
 
@@ -464,6 +486,192 @@
     c.restore();
   }
 
+  // ---------------------------------------------------------------------------
+  // One leg: wobbles, hops, loses balance, falls over, struggles back up.
+  // The pose is a rotation of the whole (rigid) pet. While the foot is the lowest
+  // point it pivots on the foot; tipped far enough, the body hits the ground and
+  // it rolls on the body instead. So it never sinks below the ground line.
+  // ---------------------------------------------------------------------------
+  const hop = { footX: 0, cx: 0, angle: 0, lift: 0, squash: 0, dir: 1, phase: 'balance', t: 0, dur: 1, from: 0, hopsLeft: 0, tries: 0, omega: 0, legSrc: null, D: 0 };
+
+  function resetHop() {
+    Object.assign(hop, { footX: state.petX ?? stageSize.width / 2, angle: 0, lift: 0, squash: 0, dir: 1, omega: 0, tries: 0 });
+    hop.cx = hop.footX;
+    setHopPhase('balance');
+  }
+
+  // Distance from body center to the foot, measured from the actual leg drawing.
+  // Also caches every point of the drawn pet (body + leg, relative to the body
+  // center) so we can find its true lowest point at any tilt.
+  function footDistance() {
+    if (hop.legSrc !== state.parts.leg1 || hop.bodySrc !== state.parts.body || hop.bodyAngle !== state.bodyAngle) {
+      const r = CFG.pet.bodyRadius;
+      const leg = normalize(state.parts.leg1, r * 1.1, 'top').flat().map((p) => ({ x: p.x, y: p.y + r - 2 }));
+      const cos = Math.cos(state.bodyAngle), sin = Math.sin(state.bodyAngle);
+      const body = normalize(state.parts.body, r * 2, 'center').flat()
+        .map((p) => ({ x: p.x * cos - p.y * sin, y: p.x * sin + p.y * cos }));
+      hop.D = Math.max(...leg.map((p) => p.y));
+      hop.points = [...body, ...leg];
+      hop.legSrc = state.parts.leg1;
+      hop.bodySrc = state.parts.body;
+      hop.bodyAngle = state.bodyAngle;
+    }
+    return hop.D;
+  }
+
+  // How far below the body center the lowest point of the drawing is at this tilt.
+  function lowestAt(angle) {
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    let low = -Infinity;
+    for (const p of hop.points) low = Math.max(low, p.x * sin + p.y * cos);
+    return low;
+  }
+
+  function setHopPhase(phase, dur) {
+    const H = CFG.oneLeg;
+    const defaults = {
+      balance: () => rand(...H.balanceSec),
+      crouch: () => H.crouchSec,
+      air: () => rand(...H.airSec),
+      land: () => H.landSec,
+      lie: () => rand(...H.lieSec),
+    };
+    hop.phase = phase;
+    hop.t = 0;
+    hop.from = hop.angle;
+    hop.dur = dur ?? (defaults[phase] ? defaults[phase]() : 1);
+  }
+
+  const ease = (t) => t * t * (3 - 2 * t);
+
+  function updateHop(dt, cardLeft) {
+    const H = CFG.oneLeg;
+    const r = CFG.pet.bodyRadius;
+    const D = footDistance();
+    const touch = Math.acos(Math.min(1, r / D)); // tilt at which the body hits the ground
+    const min = 24 + r + 10;
+    const max = Math.max(min, cardLeft - r - 20);
+    hop.t += dt;
+    const k = Math.min(1, hop.t / hop.dur);
+    const prevAngle = hop.angle;
+
+    switch (hop.phase) {
+      case 'balance': {
+        // a wobble that gets worse the longer it stands there
+        const amp = H.wobble[0] + (H.wobble[1] - H.wobble[0]) * k;
+        hop.angle = hop.from * (1 - ease(Math.min(1, k * 4))) + amp * Math.sin(hop.t * H.wobbleHz * Math.PI * 2) + amp * 0.4 * Math.sin(hop.t * 7.3);
+        hop.squash = 0;
+        if (k >= 1) {
+          hop.hopsLeft = 1 + Math.floor(Math.random() * H.maxHops);
+          if (hop.footX > max - 40) hop.dir = -1;
+          else if (hop.footX < min + 40) hop.dir = 1;
+          else if (Math.random() < 0.25) hop.dir = -hop.dir;
+          setHopPhase('crouch');
+        }
+        break;
+      }
+      case 'crouch':
+        hop.squash = H.squash * ease(k);
+        hop.angle = hop.from + (hop.dir * 0.08 - hop.from) * ease(k);
+        if (k >= 1) {
+          hop.hopDist = rand(...H.hopDist) * hop.dir;
+          hop.hopH = rand(...H.hopHeight);
+          setHopPhase('air');
+        }
+        break;
+      case 'air':
+        hop.footX = Math.max(min, Math.min(max, hop.footX + (hop.hopDist * dt) / hop.dur));
+        hop.lift = hop.hopH * 4 * k * (1 - k);
+        hop.squash = -0.12 * Math.sin(Math.PI * k); // stretch mid-air
+        hop.angle = hop.from + hop.dir * 0.12 * Math.sin(Math.PI * k) + (Math.random() - 0.5) * 0.03;
+        if (k >= 1) {
+          hop.lift = 0;
+          setHopPhase('land');
+        }
+        break;
+      case 'land':
+        hop.squash = H.squash * Math.sin(Math.PI * k);
+        if (k >= 1) {
+          hop.squash = 0;
+          if (--hop.hopsLeft > 0) setHopPhase('crouch');
+          else if (Math.random() < H.fallChance) {
+            // usually falls forward, but never into a nearby wall
+            let fall = Math.random() < 0.7 ? hop.dir : -hop.dir;
+            if (hop.footX + fall * D * 1.4 > max || hop.footX + fall * D * 1.4 < min) fall = -fall;
+            hop.omega = fall * H.tipKick;
+            setHopPhase('tip', 99);
+          } else setHopPhase('balance');
+        }
+        break;
+      case 'tip':
+        // inverted pendulum on the foot: tips over faster and faster
+        hop.omega += H.tipGravity * Math.sin(hop.angle) * dt;
+        hop.angle += hop.omega * dt;
+        if (Math.abs(hop.angle) >= touch) {
+          hop.fallDir = Math.sign(hop.angle);
+          hop.angle = touch * hop.fallDir;
+          hop.lying = hop.angle;
+          setHopPhase('flop', H.flopSec);
+        }
+        break;
+      case 'flop': {
+        // body slams down, rolls a bit further, rocks back
+        hop.angle = hop.lying + hop.fallDir * H.flopOver * Math.sin(Math.PI * k) * (1 - 0.6 * k);
+        if (k >= 1) setHopPhase('lie');
+        break;
+      }
+      case 'lie':
+        hop.angle = hop.lying + (k < 0.6 && Math.random() < 0.1 ? (Math.random() - 0.5) * 0.08 : 0); // twitch
+        if (k >= 1) {
+          const fail = hop.tries < H.maxFailedGetUps && Math.random() < H.getUpFailChance;
+          hop.tries = fail ? hop.tries + 1 : 0;
+          setHopPhase(fail ? 'tryUp' : 'getUp', fail ? H.failSec : H.getUpSec);
+        }
+        break;
+      case 'tryUp':
+        // gets about halfway… and flops back down
+        hop.angle = hop.lying * (1 - 0.6 * Math.sin(Math.PI * k));
+        if (k >= 1) setHopPhase('lie', 0.4);
+        break;
+      case 'getUp':
+        // swings up past upright, a little too far
+        hop.angle = hop.lying + (-hop.fallDir * H.overshoot - hop.lying) * ease(k);
+        if (k >= 1) setHopPhase('settle', H.settleSec);
+        break;
+      case 'settle':
+        // damped wobble back to upright
+        hop.angle = hop.from * Math.cos(k * Math.PI * 3) * (1 - k);
+        if (k >= 1) setHopPhase('balance');
+        break;
+    }
+
+    // Position from the pose: pivot on the foot, or roll on the body once it's down.
+    if (D * Math.cos(hop.angle) >= r) {
+      hop.cx = hop.footX + D * Math.sin(hop.angle);
+    } else {
+      hop.cx += r * (hop.angle - prevAngle);
+    }
+    // keep the whole body on the open stage
+    hop.cx = Math.max(24 + r, Math.min(cardLeft - r - 8, hop.cx));
+    hop.footX = hop.cx - D * Math.sin(hop.angle);
+  }
+
+  function drawHop(c, groundY) {
+    const r = CFG.pet.bodyRadius;
+    const D = footDistance();
+    footDistance(); // make sure the point cache is fresh
+    const cy = groundY - lowestAt(hop.angle) - hop.lift; // the real lowest point touches the ground
+    c.save();
+    c.translate(hop.cx, cy);
+    c.rotate(hop.angle);
+    // squash/stretch around the foot
+    c.translate(0, D);
+    c.scale(1 + hop.squash * 0.6, 1 - hop.squash);
+    c.translate(0, -D);
+    drawPet(c, 0, r * 1.1 + r, r); // body centered on the origin
+    c.restore();
+  }
+
   let lastFrameT = null;
   function frame(t) {
     const dt = lastFrameT == null ? 0 : Math.min((t - lastFrameT) / 1000, 0.05);
@@ -489,9 +697,19 @@
           drawRollingCircle(ctx, groundY);
           state.petX = roll.x;
           state.bodyAngle = roll.angle;
+        } else if (state.parts.leg1 && !state.parts.leg2) {
+          // One leg: hop, fall, get up.
+          updateHop(dt, cardLeft);
+          drawHop(ctx, groundY);
+          state.petX = hop.footX;
         } else {
           drawPet(ctx, state.petX ?? cardLeft / 2, groundY, CFG.pet.bodyRadius);
         }
+        // The creature's words, in a cloud next to its mouth.
+        const r = CFG.pet.bodyRadius;
+        const px = state.petX ?? cardLeft / 2;
+        const mouthY = groundY - r * 1.1 - r + r * 0.15;
+        window.Speech.draw(ctx, t, px + r * 0.55, mouthY, cardLeft, cssVar('--bubble-ink'), cssVar('--bubble-bg'));
       }
     }
     requestAnimationFrame(frame);

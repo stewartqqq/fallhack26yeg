@@ -26,21 +26,13 @@ window.SIDEKICK = {
     mouth: 'mouth',
     eyes: 'eyes',
   },
-  partLabel: {
-    body: 'Circle',
-    leg1: 'Leg',
-    leg2: 'Leg',
-    mouth: 'Mouth',
-    eyes: 'Eyes',
-  },
 
   timing: {
     analyzingMs: 5200,        // total time the fake progress bar takes
     personalityLockedMs: 2600, // how long "Personality locked in" stays up
     // Fake progress bar: [fraction of time, fraction filled]. Stalls and bursts so it looks real.
     analyzingCurve: [[0.1, 0.16], [0.28, 0.22], [0.4, 0.27], [0.48, 0.61], [0.66, 0.68], [0.8, 0.71], [0.9, 0.96], [1, 1]],
-    recognizingMs: 700,
-    toastMs: 1400,
+    flashNoteMs: 1600,        // how long a temporary note (e.g. "draw something first") stays
   },
 
   pet: {
@@ -48,6 +40,50 @@ window.SIDEKICK = {
     groundOffset: 28, // ground line distance from bottom of stage
     strokeWidth: 3,
     legSpread: 0.3,   // with two legs: each hip sits this × bodyRadius left/right of center
+  },
+
+  // One leg: wobbles, hops, falls over, struggles back up. Angles in radians.
+  oneLeg: {
+    balanceSec: [0.7, 1.5], // wobbling in place before trying to hop
+    wobble: [0.03, 0.16],   // wobble amplitude: starts small, gets worse
+    wobbleHz: 2.2,
+    maxHops: 3,             // hops in a row: 1..maxHops
+    crouchSec: 0.16,
+    airSec: [0.32, 0.45],
+    hopDist: [18, 45],      // px per hop
+    hopHeight: [16, 38],    // px
+    landSec: 0.14,
+    squash: 0.2,
+    fallChance: 0.55,       // after a hop sequence: falls over this often
+    tipKick: 0.6,           // initial tip speed
+    tipGravity: 14,         // how fast the tip accelerates
+    flopSec: 0.45,
+    flopOver: 0.35,         // rolls this far past the impact
+    lieSec: [0.7, 1.3],
+    getUpFailChance: 0.55,  // tries to get up, gets halfway, flops back down
+    maxFailedGetUps: 2,
+    failSec: 0.6,
+    getUpSec: 0.6,
+    overshoot: 0.22,        // swings past upright by this much…
+    settleSec: 0.7,         // …then wobbles back
+  },
+
+  // The creature's speech cloud (speech.js).
+  speech: {
+    font: "'Gloria Hallelujah', cursive",
+    fontSize: 19,
+    maxWidth: 230,  // px before wrapping
+    padX: 30,       // space between the text and the cloud's edge
+    padY: 22,
+    bump: 22,       // cloud bump radius (bigger = fewer, rounder bumps)
+    bumpSpacing: 1.5, // distance between bumps, in bump radii
+    gap: 26,        // space between the pet and the cloud
+    lift: 30,       // cloud center sits this far above the mouth
+    headWidth: 70,  // used to put the cloud left of the head when there's no room on the right
+    charMs: 45,     // typewriter speed
+    holdMs: 1100,   // pause after a line is typed…
+    holdPerCharMs: 25, // …plus this per character
+    mouthHz: 7,     // mouth flapping while typing
   },
 
   // Background doodles (scenery.js): decoration only, nothing interacts with the pet.
@@ -120,8 +156,25 @@ window.SIDEKICK = {
     },
     draw: {
       empty: 'draw something first, genius',
-      recognizing: 'Recognizing…',
-      detected: (label) => `${label} detected!`,
+    },
+    // App notes in the top-right corner: what to draw next, per stage. The app talking to
+    // the user, never the creature (it can't talk until it has a mouth).
+    notes: {
+      circle: 'draw a circle.',
+      oneLeg: 'now draw a leg.',
+      twoLegs: 'draw another leg, dumbass.',
+      mouth: 'give it a mouth.',
+      eyes: 'now draw the eyes.',
+    },
+    // The creature talking (cloud bubbles). Plays when the part is drawn.
+    lines: {
+      mouth: [
+        'AAAAAAAAAAAAA',
+        'You CREATED me with no EYES?',
+        'I can’t see. I can barely stand.',
+        'You MONSTER.',
+        'GIVE. ME. EYES.',
+      ],
     },
   },
 };

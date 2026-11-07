@@ -46,7 +46,8 @@ Hidden demo controls (work anywhere in the dev window, also in the Command Palet
 
 ### Phase 3 — Drawing → parts on stage (partly done)
 - [x] Drawing pad in floating card, stroke capture, Done / Clear
-- [x] Fake recognition toast: "Recognizing… ✓ Leg detected!"
+- [x] ~~Fake recognition toast~~ replaced by an app note in the top-right that says what to draw next
+      ("draw a circle." → "now draw a leg." → "draw another leg, dumbass." …), always the app, never the creature, text in `config.js → text.notes`
 - [x] Normalize strokes (scale + anchor) and place parts statically on the pet
 - [ ] Tune attachment points/sizes against real drawings
 - [ ] Decide eyes vs. no-eyes (see open questions)
@@ -55,13 +56,17 @@ Hidden demo controls (work anywhere in the dev window, also in the Command Palet
 - [x] circle: rolls with physics: pivots on the lowest point of the drawn shape (never sinks below ground,
       lumpy drawings bob and get stuck), pushes in clumsy bursts, rests and slips back, bonks off walls.
       `roll.frustration` rises with every failed push (pushes get harder). **Hook it up to angry lines in Phase 5.**
-- [ ] oneLeg: pinned on the leg, scoots and tips back
+- [x] oneLeg: wobbles (worse over time), hops 1–3 times, often tips over (pendulum on the foot), body
+      slams and rolls, lies there twitching, fails to get up (up to 2×), finally swings up past upright
+      and wobbles back. Never sinks below ground, never falls into a wall. Tunables: `config.js → oneLeg`
 - [ ] twoLegs: walk cycle (legs swing around hips, body bob), trip → fall ~90° → lie → get up
 
 ### Phase 5 — Speech bubbles + mouth/eyes
-- [ ] Bubble (white rounded, hand font, tail to pet), follows pet, typewriter text
-- [ ] Mouth animates while text types
-- [ ] mouth stage: screaming shake + line sequence
+- [x] Creature speaks in a **cloud** (scalloped, puffs down to the mouth), follows pet, typewriter text
+      (`speech.js`). App hints stay in the square note, so it's clear who's talking
+- [x] Mouth flaps (oval, like the "Talking" frame) while text types
+- [x] mouth stage: line sequence plays when the mouth is drawn (`config.js → text.lines.mouth`)
+- [ ] mouth stage: screaming shake
 - [ ] eyes stage: blink, look around, look at editor → coding
 
 ### Phase 6 — Editor integration
