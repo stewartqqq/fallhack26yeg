@@ -27,6 +27,7 @@
     state.timers.forEach(clearTimeout);
     state.timers = [];
     state.busy = false;
+    if (stage === 'circle' && state.stage !== 'circle') resetRoll();
     state.stage = stage;
     vscode.postMessage({ type: 'stage', stage });
     render();
@@ -335,7 +336,51 @@
     if (P.eyes) place(P.eyes, cx + r * 0.3, cy - r * 0.3, r * 0.5, 'center', ink);
   }
 
-  function frame() {
+  // Rolls back and forth across the open stage area, spinning at the rate a
+  // circle of this radius would while rolling without slipping (angular
+  // speed = linear speed / radius), bouncing elastically off the walls.
+  const roll = { x: null, vx: CFG.roll.speed, angle: 0 };
+
+  function resetRoll() {
+    roll.x = null;
+    roll.vx = CFG.roll.speed;
+    roll.angle = 0;
+  }
+
+  function updateRoll(dt, cardLeft) {
+    const r = CFG.pet.bodyRadius;
+    const min = 24 + r;
+    const max = Math.max(min, cardLeft - r - 12);
+    if (roll.x == null) roll.x = (min + max) / 2;
+
+    roll.x += roll.vx * dt;
+    roll.angle += (roll.vx / r) * dt; // rolling without slipping
+
+    if (roll.x > max) {
+      roll.x = max - (roll.x - max);
+      roll.vx = -Math.abs(roll.vx);
+    } else if (roll.x < min) {
+      roll.x = min + (min - roll.x);
+      roll.vx = Math.abs(roll.vx);
+    }
+  }
+
+  // Rotates the actual drawn (or default wobbly) body shape around its own
+  // center, so the hand-drawn imperfections visibly spin with it.
+  function drawRollingCircle(c, groundY) {
+    const r = CFG.pet.bodyRadius;
+    const body = state.parts.body || defaultParts().body;
+    c.save();
+    c.translate(roll.x, groundY - r);
+    c.rotate(roll.angle);
+    drawStrokes(c, normalize(body, r * 2, 'center'), cssVar('--ink'), CFG.pet.strokeWidth);
+    c.restore();
+  }
+
+  let lastFrameT = null;
+  function frame(t) {
+    const dt = lastFrameT == null ? 0 : Math.min((t - lastFrameT) / 1000, 0.05);
+    lastFrameT = t;
     const { width, height } = stageSize;
     ctx.clearRect(0, 0, width, height);
 
@@ -350,7 +395,12 @@
       if (!state.petAway) {
         // Center the pet in the free space left of the drawing card.
         const cardLeft = card.classList.contains('hidden') ? width : card.offsetLeft;
-        drawPet(ctx, cardLeft / 2, groundY, CFG.pet.bodyRadius);
+        if (state.stage === 'circle') {
+          updateRoll(dt, cardLeft);
+          drawRollingCircle(ctx, groundY);
+        } else {
+          drawPet(ctx, cardLeft / 2, groundY, CFG.pet.bodyRadius);
+        }
       }
     }
     requestAnimationFrame(frame);

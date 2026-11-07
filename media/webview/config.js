@@ -47,6 +47,12 @@ window.SIDEKICK = {
     strokeWidth: 3,
   },
 
+  // Phase 4: during the 'circle' stage the body rolls back and forth across
+  // the open stage area, bouncing off the walls.
+  roll: {
+    speed: 120, // px/sec horizontal speed while rolling
+  },
+
   // Chat heist (Ctrl+Alt+I): pet leaves the panel, hops to the AI chat, kicks it shut.
   // Positions are in screen units relative to the VS Code window (DPI-scaled, so ~CSS px).
   heist: {
