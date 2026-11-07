@@ -286,7 +286,9 @@
     const { bodyRadius: r, groundOffset, strokeWidth } = CFG.pet;
     const groundY = stageSize.height - groundOffset;
     const legLen = r * 1.1;
-    const cx = stageSize.width / 2;
+    // Center the pet in the free space left of the drawing card.
+    const cardLeft = card.classList.contains('hidden') ? stageSize.width : card.offsetLeft;
+    const cx = cardLeft / 2;
     const cy = groundY - legLen - r;
     const ink = cssVar('--ink');
     const muted = cssVar('--ink-muted');

@@ -20,6 +20,8 @@
 
   /* the classic wobbly hand-drawn border radius */
   --sketchy-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+
+  --card-width: 420px;     /* drawing card fills the panel height, this wide */
 }
 
 * { box-sizing: border-box; }
@@ -132,9 +134,13 @@ html, body {
 /* ---------- Interaction card ---------- */
 #card {
   position: absolute;
+  top: 10px;
   right: 12px;
-  bottom: 12px;
-  width: 200px;
+  bottom: 10px;
+  width: var(--card-width);
+  max-width: 50%;
+  display: flex;
+  flex-direction: column;
   padding: 8px;
   background: var(--card-bg);
   border-radius: 8px;
@@ -142,7 +148,8 @@ html, body {
 }
 .pad-wrap {
   position: relative;
-  height: 110px;
+  flex: 1;
+  min-height: 120px;
   border: 1.5px dashed var(--card-border);
   border-radius: 4px;
   background: var(--pad-bg);
@@ -162,7 +169,7 @@ html, body {
   align-items: center;
   justify-content: center;
   color: var(--ink-muted);
-  font-size: 15px;
+  font-size: 20px;
   pointer-events: none;
 }
 .card-actions { display: flex; gap: 6px; margin-top: 8px; }
@@ -184,8 +191,8 @@ html, body {
 /* ---------- Toast ---------- */
 #toast {
   position: absolute;
-  right: 12px;
-  bottom: 176px;
+  right: calc(var(--card-width) + 24px);
+  top: 14px;
   padding: 6px 12px;
   background: var(--bubble-bg);
   color: var(--bubble-ink);
