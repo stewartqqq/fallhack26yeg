@@ -41,7 +41,7 @@ Hidden demo controls (work anywhere in the dev window, also in the Command Palet
 
 ### Phase 2 — Onboarding ✅
 - [x] Q1: pick personality — Roast but helpful / Evil / Kind & supporting (all route to the evil joker)
-- [x] Fake "Analyzing personality…" progress bar → "Personality locked in: Evil Joker 😈"
+- [x] Fake "Analyzing personality…" progress bar → "Personality locked in: Evil Joker." (longer, uneven progress bar)
 - [x] Q2: pick a preset sprite (Stickman / Blob / Ghost — show-only, just selectable) or **Draw your own** (the real path)
 
 ### Phase 3 — Drawing → parts on stage (partly done)
@@ -101,10 +101,11 @@ slams it shut, and says "Do it yourself."
    "Do it yourself." → drops back down into the panel.
 
 **Tasks**
-- [ ] `media/overlay.ps1`: transparent topmost window, click-through + no focus steal
+- [x] `media/overlay.ps1`: transparent topmost window, click-through + no focus steal
       (`ShowActivated=false`, `WS_EX_TRANSPARENT | WS_EX_NOACTIVATE`), stdin command loop, pet image + bubble
-- [ ] Rebind `Ctrl+Alt+I` → `sidekick.chatHeist` (opens chat, runs choreography, closes chat)
-- [ ] Export pet PNG from webview
+- [x] Rebind `Ctrl+Alt+I` → `sidekick.chatHeist` (opens chat, runs choreography, closes chat)
+- [x] Export pet PNG from webview
+- [ ] **Prototype built, not yet confirmed working live in VS Code**: try it and tune positions
 - [ ] Screen coordinates: VS Code's API doesn't give screen positions of the window/panel/chat. Demo
       runs maximized on one laptop, so **calibrate once** (positions in `config.js`, in Windows
       DPI-scaled units; this laptop is ~150% scaling)
