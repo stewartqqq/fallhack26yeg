@@ -70,6 +70,7 @@
 
   function reset() {
     state.parts = {};
+    punch.active = false;
     state.codeReady = false;
     state.petAway = false;
     state.petX = null;
@@ -768,9 +769,9 @@
   }
 
   stage.addEventListener('pointerdown', (e) => {
-    if (ONBOARDING.includes(state.stage) || state.petAway) return;
+    if (ONBOARDING.includes(state.stage) || state.petAway || punch.active) return;
     if (!pokeHit(e.offsetX, e.offsetY)) return;
-    if (state.stage === 'highFive' && walker.phase === 'highFive') return highFive();
+    if (state.stage === 'highFive' && walker.phase === 'highFive') return highFive(e.offsetX, e.offsetY);
     stage.setPointerCapture(e.pointerId);
     poke.dragging = true;
     poke.pointerId = e.pointerId;
@@ -802,11 +803,87 @@
   stage.addEventListener('pointercancel', endPoke);
 
   // You high-fived it. It can't take it: falls over, stays down, bitter.
-  function highFive() {
+  // The "high five" is more of a punch: it gets launched into the screen, tumbling in 3D,
+  // and lands far away, tiny, on its back. Then it says its bitter lines from back there.
+  const punch = { active: false };
+  function highFive(clickX, clickY) {
+    Sound.thud();
     Sound.pop(true);
-    walker.knockOver();
+    const r = CFG.pet.bodyRadius;
+    const cardLeft = card.classList.contains('hidden') ? stageSize.width : card.offsetLeft;
+    const groundY = stageSize.height - CFG.pet.groundOffset;
+    const P = CFG.punch;
+    const horizon = groundY * P.horizon;
+    Object.assign(punch, {
+      active: true,
+      t0: performance.now(),
+      clickX, clickY,
+      x0: walker.x,
+      y0: groundY - r * 1.55,          // middle of the standing pet
+      fx: walker.x + (cardLeft / 2 - walker.x) * 0.4,
+      fy: horizon + (groundY - horizon) * P.farScale - r * P.farScale, // lying far away, on the far "ground"
+      dir: walker.dir,
+    });
     goTo('done');
-    later(1400, () => window.Speech.say(T.lines.bitter));
+    later((P.impactSec + P.flySec) * 1000 + 900, () => window.Speech.say(T.lines.bitter));
+  }
+
+  function drawPunch(c, now, groundY) {
+    const P = CFG.punch;
+    const el = (now - punch.t0) / 1000;
+    let s = 1, x = punch.x0, y = punch.y0, sx = 1, sy = 1, rz = 0;
+    const lying = -punch.dir * Math.PI / 2; // ends up on its back
+    if (el < P.impactSec) {
+      // squashed toward you for a split second
+      s = 1 + 0.18 * Math.sin(Math.PI * el / P.impactSec);
+    } else if (el < P.impactSec + P.flySec) {
+      const k = (el - P.impactSec) / P.flySec;
+      const e = 1 - Math.pow(1 - k, 2); // fast at first, then drifts into the distance
+      s = 1 + (P.farScale - 1) * e;
+      x = punch.x0 + (punch.fx - punch.x0) * e;
+      y = punch.y0 + (punch.fy - punch.y0) * e - P.arc * Math.sin(Math.PI * k);
+      // 3D tumble: flipping head over heels (x axis) and spinning around (y axis)
+      sy = Math.cos(2 * Math.PI * P.flipsX * e);
+      sx = Math.cos(2 * Math.PI * P.spinsY * e);
+      rz = lying * e;
+    } else {
+      // lands, bounces, lies there
+      const k = el - P.impactSec - P.flySec;
+      s = P.farScale;
+      x = punch.fx;
+      y = punch.fy - P.bounce * P.farScale * Math.abs(Math.sin(k * 9)) * Math.exp(-k * 5);
+      rz = lying + (Math.random() < 0.01 ? 0.08 : 0); // the odd twitch
+      sy = k < 0.12 ? 1 - 0.3 * Math.sin(Math.PI * k / 0.12) : 1;
+    }
+    punch.x = x;
+    punch.y = y;
+    punch.s = s;
+    c.save();
+    c.translate(x, y);
+    c.rotate(rz);
+    c.scale(s * sx, s * sy);
+    c.translate(-punch.x0, -punch.y0);
+    walker.draw(c, groundY);
+    c.restore();
+
+    // impact burst where you clicked
+    if (el < P.burstSec) {
+      const k = el / P.burstSec;
+      c.save();
+      c.strokeStyle = cssVar('--ink');
+      c.lineWidth = 3;
+      c.lineCap = 'round';
+      c.globalAlpha = 1 - k;
+      for (let i = 0; i < 9; i++) {
+        const a = (i / 9) * Math.PI * 2 + 0.3;
+        const r0 = 10 + 30 * k, r1 = r0 + 14 * (1 - k) + 6;
+        c.beginPath();
+        c.moveTo(punch.clickX + Math.cos(a) * r0, punch.clickY + Math.sin(a) * r0);
+        c.lineTo(punch.clickX + Math.cos(a) * r1, punch.clickY + Math.sin(a) * r1);
+        c.stroke();
+      }
+      c.restore();
+    }
   }
 
   // Rotates whatever drawFn() draws around (pivotX, pivotY) by the current poke tilt.
@@ -830,6 +907,12 @@
     lastFrameT = t;
     const { width, height } = stageSize;
     ctx.clearRect(0, 0, width, height);
+    ctx.save();
+    if (punch.active) {
+      const el = (performance.now() - punch.t0) / 1000;
+      const shake = CFG.punch.shake * Math.max(0, 1 - el / CFG.punch.shakeSec);
+      if (shake > 0) ctx.translate((Math.random() - 0.5) * 2 * shake, (Math.random() - 0.5) * 2 * shake);
+    }
 
     if (!ONBOARDING.includes(state.stage)) {
       const groundY = height - CFG.pet.groundOffset;
@@ -876,6 +959,8 @@
           petHitR = CFG.pet.bodyRadius * 1.7;
           drawWithPoke(() => drawHop(ctx, groundY - poke.lift), hop.cx, groundY);
           state.petX = hop.footX;
+        } else if (punch.active) {
+          drawPunch(ctx, performance.now(), groundY);
         } else if (walking()) {
           // Two legs: walks around (blind) until it has a mouth, then stands and talks.
           // Picked up: legs kick in the air.
@@ -887,6 +972,11 @@
           petScreenX = walker.x;
           petScreenY = groundY - r * 1.6;
           petHitR = r * 1.7;
+          if (walker.phase === 'highFive') {
+            // easy to hit: the body or the raised leg (the "hand" it's offering)
+            petScreenX = walker.x + walker.dir * r * 0.6;
+            petHitR = r * 2.3;
+          }
           drawWithPoke(() => walker.draw(ctx, groundY - poke.lift), walker.x, groundY);
           state.petX = walker.x;
         } else {
@@ -902,9 +992,13 @@
         const px = state.petX ?? cardLeft / 2;
         const mouthY = groundY - r * 1.1 - r + r * 0.15;
         const facing = walking() ? walker.dir : 1; // mouth is on the side it faces
-        window.Speech.draw(ctx, t, px + facing * r * 0.55, mouthY, cardLeft, cssVar('--bubble-ink'), cssVar('--bubble-bg'));
+        // punched far away: talk from wherever it ended up
+        const ax = punch.active ? punch.x + r * punch.s : px + facing * r * 0.55;
+        const ay = punch.active ? punch.y - r * punch.s : mouthY;
+        window.Speech.draw(ctx, t, ax, ay, cardLeft, cssVar('--bubble-ink'), cssVar('--bubble-bg'));
       }
     }
+    ctx.restore(); // (shake)
     requestAnimationFrame(frame);
   }
 

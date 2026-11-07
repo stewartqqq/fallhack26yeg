@@ -23,7 +23,6 @@ window.createWalker = function ({ CFG, state, normalize, drawPet }) {
     stance: 1, footX: 0,      // planted leg and its foot's world x
     phase: 'stand', t: 0, dur: 1, from: 0,
     mode: 'walk',             // 'walk' = wanders around; 'idle' = stands in place (e.g. while talking)
-    stayDown: false,          // knocked over for good (end of the story)
     step: null, stepsLeft: 0, fallSign: 0, lying: 0, omega: 0, afterUp: null, tries: 0,
   };
 
@@ -213,11 +212,6 @@ window.createWalker = function ({ CFG, state, normalize, drawPet }) {
         if (k >= 1) setPhase('lie', rand(...h.lieSec));
         break;
       case 'lie':
-        if (w.stayDown) {
-          // done. not getting up. the odd twitch.
-          w.a1 = w.a2 = Math.random() < 0.02 ? 0.15 : w.a1 * 0.9;
-          break;
-        }
         // legs flail in the air
         w.a1 = h.flail * Math.sin(w.t * 15);
         w.a2 = -h.flail * Math.sin(w.t * 15 + 1.3);
@@ -268,15 +262,9 @@ window.createWalker = function ({ CFG, state, normalize, drawPet }) {
       setPhase('highFive', 99);
     },
 
-    /** Falls over backwards and stays down. */
-    knockOver() {
-      w.stayDown = true;
-      fall(-1, H().bonkKick, null);
-    },
-
     /** Start walking at body-center x. `angle` > 0.2: it was lying down and gets up first. */
     reset({ x, angle = 0, dir = 1 }) {
-      Object.assign(w, { cx: x, dir, flip: 1, angle, a1: 0, a2: 0, lift1: 0, lift2: 0, tries: 1, afterUp: null, stayDown: false });
+      Object.assign(w, { cx: x, dir, flip: 1, angle, a1: 0, a2: 0, lift1: 0, lift2: 0, tries: 1, afterUp: null });
       if (Math.abs(angle) > 0.2) {
         w.fallSign = Math.sign(angle);
         w.lying = angle;

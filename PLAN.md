@@ -120,7 +120,8 @@ Replaces the original roast/tokens/pointing flow. All lines in `config.js → te
 - [x] **submit code** button appears under the drawing pad once the line under `if complement in seen:`
       has something on it and you stop typing. Wrong → "Nope." + hint. Right (either index order) →
       "It works. Good job. I guess. High five?"
-- [x] **highFive**: lifts its front leg; click it → falls over backwards and stays down → "Okay. My
+- [x] **highFive**: lifts its front leg; click it (body or leg) → impact burst + screen shake, it gets punched
+      into the screen (3D tumble, shrinking into the distance), lands far away on its back → "Okay. My
       mission is over. I hope you're feeling better about solving this. I'm not."
 - [ ] Live run-through in VS Code, tune inspection positions
 

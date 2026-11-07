@@ -109,6 +109,21 @@ window.SIDEKICK = {
     highFiveLeg: 1.35,       // how high it lifts its leg for the high five
   },
 
+  // The high five is really a punch: it flies into the screen (3D tumble) and lands far away.
+  punch: {
+    impactSec: 0.12,  // squashed toward you
+    flySec: 1.3,      // flight into the distance
+    farScale: 0.28,   // how small it is when it lands far away
+    horizon: 0.35,    // where the horizon is (fraction of the ground's height); far things sit closer to it
+    arc: 70,          // px it rises during the flight
+    flipsX: 2,        // head-over-heels flips
+    spinsY: 1,        // spins around its vertical axis
+    bounce: 40,       // landing bounce (scaled by distance)
+    shake: 7,         // screen shake on impact, px
+    shakeSec: 0.35,
+    burstSec: 0.3,    // impact lines where you clicked
+  },
+
   // The creature's speech cloud (speech.js).
   speech: {
     font: "'Gloria Hallelujah', cursive",
