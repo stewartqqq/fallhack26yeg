@@ -66,8 +66,8 @@ class SidekickViewProvider implements vscode.WebviewViewProvider {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     @font-face {
-      font-family: 'Gochi Hand';
-      src: url('${media('fonts', 'GochiHand-Regular.ttf')}') format('truetype');
+      font-family: 'Gloria Hallelujah';
+      src: url('${media('fonts', 'GloriaHallelujah.ttf')}') format('truetype');
     }
   </style>
   <link rel="stylesheet" href="${media('webview', 'style.css')}">

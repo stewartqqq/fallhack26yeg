@@ -74,10 +74,14 @@
   function choiceButton({ icon, name, desc, extraClass }, onClick) {
     const b = document.createElement('button');
     b.className = 'choice' + (extraClass ? ' ' + extraClass : '');
-    b.innerHTML =
-      `<svg viewBox="0 0 60 60">${ICONS[icon]}</svg>` +
-      `<div class="name">${name}</div>` +
-      (desc ? `<div class="desc">${desc}</div>` : '');
+    b.innerHTML = `<svg viewBox="0 0 60 60">${ICONS[icon]}</svg><div class="name"></div>`;
+    clumsy(b.querySelector('.name'), name);
+    if (desc) {
+      const d = document.createElement('div');
+      d.className = 'desc';
+      d.textContent = desc; // small text stays straight so it's readable
+      b.appendChild(d);
+    }
     b.addEventListener('click', () => onClick(b));
     return b;
   }
@@ -85,7 +89,7 @@
   function title(text) {
     const h = document.createElement('h1');
     h.className = 'ob-title';
-    h.textContent = text;
+    clumsy(h, text);
     return h;
   }
 
@@ -117,7 +121,7 @@
     steps.forEach((step, i) => later((ms / steps.length) * i, () => (sub.textContent = step + '…')));
 
     later(ms, () => {
-      heading.textContent = T.analyzing.locked;
+      clumsy(heading, T.analyzing.locked);
       heading.classList.add('ob-locked');
       bar.remove();
       sub.remove();
@@ -142,12 +146,39 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Clumsy lettering: each letter gets a small random tilt and hop, like we
+  // wrote it by hand. Seeded by the text so a label wobbles the same way every time.
+  // ---------------------------------------------------------------------------
+  function clumsy(el, text) {
+    let seed = 0;
+    for (const ch of text) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+    const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32) * 2 - 1;
+
+    // One inner span so spaces survive inside flex containers.
+    const inner = document.createElement('span');
+    el.replaceChildren(inner);
+    text.split(' ').forEach((word, i) => {
+      if (i) inner.append(' ');
+      const w = document.createElement('span');
+      w.className = 'cw';
+      for (const ch of word) {
+        const l = document.createElement('span');
+        l.className = 'cl';
+        l.textContent = ch;
+        l.style.transform = `translateY(${(rand() * 1.8).toFixed(1)}px) rotate(${(rand() * 6).toFixed(1)}deg)`;
+        w.appendChild(l);
+      }
+      inner.appendChild(w);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // Toast
   // ---------------------------------------------------------------------------
   let toastTimer;
   function toast(text, ms = CFG.timing.toastMs) {
     clearTimeout(toastTimer);
-    toastEl.textContent = text;
+    clumsy(toastEl, text);
     toastEl.classList.remove('hidden');
     if (ms) toastTimer = setTimeout(hideToast, ms);
   }
@@ -337,6 +368,9 @@
       vscode.postMessage({ type: 'log', text: 'replay not implemented yet' });
     }
   });
+
+  document.querySelectorAll('.btn').forEach((b) => clumsy(b, b.textContent));
+  clumsy($('pad-hint'), $('pad-hint').textContent);
 
   resize();
   goTo(state.stage);

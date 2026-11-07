@@ -25,7 +25,7 @@ Hidden demo controls (work anywhere in the dev window, also in the Command Palet
 | `media/webview/config.js` | **All** text, timings, sizes, stage order. Edit jokes here. |
 | `media/webview/main.js` | State machine, onboarding screens, drawing pad, stage canvas |
 | `media/webview/style.css` | Styles. All colors/fonts are CSS variables in `:root` (swap for Figma) |
-| `media/fonts/` | Gochi Hand (hand-drawn font, OFL license, bundled for offline) |
+| `media/fonts/` | Gloria Hallelujah (hand-drawn font, OFL license, bundled for offline) |
 | `demo/two_sum.py` | The file we "code" in during the demo |
 
 ## Stage order

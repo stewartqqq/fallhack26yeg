@@ -59,7 +59,7 @@ window.SIDEKICK = {
     analyzing: {
       title: 'Analyzing personality…',
       steps: ['reading your commit history', 'judging your variable names', 'calibrating sarcasm'],
-      locked: 'Personality locked in: Evil Joker 😈',
+      locked: 'Personality locked in: Evil Joker.',
     },
     sprite: {
       title: 'Choose a body',
@@ -73,7 +73,7 @@ window.SIDEKICK = {
     draw: {
       empty: 'draw something first, genius',
       recognizing: 'Recognizing…',
-      detected: (label) => `✓ ${label} detected!`,
+      detected: (label) => `${label} detected!`,
     },
   },
 };

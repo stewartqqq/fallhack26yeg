@@ -15,8 +15,7 @@
   --bubble-ink: #111111;
   --danger: #e5484d;
 
-  --font-hand: 'Gochi Hand', 'Ink Free', 'Segoe Print', 'Comic Sans MS', cursive;
-  --font-ui: var(--vscode-font-family, system-ui, sans-serif);
+  --font-hand: 'Gloria Hallelujah', 'Ink Free', 'Segoe Print', 'Comic Sans MS', cursive;
 
   /* the classic wobbly hand-drawn border radius */
   --sketchy-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
@@ -69,9 +68,10 @@ html, body {
 #onboarding:empty { display: none; }
 
 .ob-title {
-  font-size: 24px;
+  font-size: 32px;
+  font-weight: normal;
+  line-height: 1.2;
   margin: 0;
-  letter-spacing: 0.5px;
 }
 
 .choices {
@@ -82,8 +82,8 @@ html, body {
 }
 
 .choice {
-  width: 150px;
-  padding: 10px 10px 12px;
+  width: 190px;
+  padding: 8px 10px 10px;
   background: transparent;
   color: var(--ink);
   font-family: var(--font-hand);
@@ -99,16 +99,16 @@ html, body {
 .choice.selected { border-color: var(--ink); border-style: solid; }
 
 .choice svg {
-  width: 56px;
-  height: 56px;
+  width: 52px;
+  height: 52px;
   stroke: var(--ink);
   fill: none;
   stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.choice .name { font-size: 19px; margin-top: 4px; }
-.choice .desc { font-size: 14px; color: var(--ink-muted); margin-top: 2px; }
+.choice .name { font-size: 24px; line-height: 1.15; margin-top: 2px; }
+.choice .desc { font-size: 17px; line-height: 1.2; color: var(--ink-muted); margin-top: 4px; }
 
 .choice.draw-own { border-style: dashed; }
 .choice.draw-own svg { stroke: var(--ink); }
@@ -128,8 +128,8 @@ html, body {
   border-radius: var(--sketchy-radius);
   transition: width linear;
 }
-.ob-sub { color: var(--ink-muted); font-size: 16px; min-height: 1.2em; }
-.ob-locked { font-size: 22px; }
+.ob-sub { color: var(--ink-muted); font-size: 22px; min-height: 1.3em; }
+.ob-locked { font-size: 34px; }
 
 /* ---------- Interaction card ---------- */
 #card {
@@ -169,23 +169,29 @@ html, body {
   align-items: center;
   justify-content: center;
   color: var(--ink-muted);
-  font-size: 20px;
+  font-size: 26px;
   pointer-events: none;
 }
-.card-actions { display: flex; gap: 6px; margin-top: 8px; }
+.card-actions { display: flex; gap: 10px; margin-top: 8px; }
 
 .btn {
-  font-family: var(--font-ui);
-  font-size: 12px;
+  font-family: var(--font-hand);
+  font-size: 22px;
+  line-height: 1;
   color: var(--ink);
   background: var(--btn-bg);
-  border: none;
-  border-radius: 3px;
-  padding: 5px 10px;
+  border: 2px solid var(--ink-muted);
+  border-radius: var(--sketchy-radius);
+  padding: 6px 16px 8px;
   cursor: pointer;
+  transform: rotate(-1deg);
+  transition: transform 100ms ease;
 }
+.btn:nth-child(2n) { transform: rotate(1.2deg); border-radius: 15px 225px 15px 255px / 255px 15px 225px 15px; }
+.btn:hover { transform: rotate(0deg) scale(1.05); }
+.btn:active { transform: scale(0.95); }
 .btn:hover { background: var(--btn-hover); }
-.btn.primary { background: var(--accent); color: #fff; }
+.btn.primary { background: var(--accent); border-color: #fff; color: #fff; }
 .btn.primary:hover { background: var(--accent-hover); }
 
 /* ---------- Toast ---------- */
@@ -193,10 +199,16 @@ html, body {
   position: absolute;
   right: calc(var(--card-width) + 24px);
   top: 14px;
-  padding: 6px 12px;
+  padding: 4px 16px 6px;
   background: var(--bubble-bg);
   color: var(--bubble-ink);
-  font-size: 16px;
+  font-size: 24px;
+  transform: rotate(-2deg);
   border-radius: var(--sketchy-radius);
   border: 2px solid var(--bubble-ink);
 }
+
+/* ---------- Clumsy lettering ---------- */
+/* clumsy() in main.js wraps each letter in a span with a small random tilt/hop. */
+.cw { white-space: nowrap; }
+.cl { display: inline-block; }
