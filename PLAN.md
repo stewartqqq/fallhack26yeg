@@ -52,7 +52,9 @@ Hidden demo controls (work anywhere in the dev window, also in the Command Palet
 - [ ] Decide eyes vs. no-eyes (see open questions)
 
 ### Phase 4 — Movement
-- [ ] circle: rolls left/right across full stage, rotating, bouncing off edges
+- [x] circle: rolls with physics: pivots on the lowest point of the drawn shape (never sinks below ground,
+      lumpy drawings bob and get stuck), pushes in clumsy bursts, rests and slips back, bonks off walls.
+      `roll.frustration` rises with every failed push (pushes get harder). **Hook it up to angry lines in Phase 5.**
 - [ ] oneLeg: pinned on the leg, scoots and tips back
 - [ ] twoLegs: walk cycle (legs swing around hips, body bob), trip → fall ~90° → lie → get up
 
@@ -116,6 +118,12 @@ must never steal focus from the editor.
 - [ ] Apply Figma styling
 - [ ] `DEMO.md`: exact run-through script + keybindings
 - [ ] Full rehearsal on the demo machine (font sizes, panel height, trackpad drawing)
+
+## Joke ideas (to elaborate later)
+- **Existential crisis**: once it can talk (mouth stage) or see (eyes stage), the pet realizes *you*
+  brought it into existence and made it an ugly freak. "You CREATED me? …Like THIS?" "I didn't ask to be
+  born. Especially not as a circle with chicken legs." Could replace or extend the mouth/eyes lines.
+- **Struggling while rolling**: when `roll.frustration` maxes out, it yells at the user for giving it no legs.
 
 ## Open questions
 - **Eyes**: the v2 stickman board has no eyes (side-view, one-line mouth), but the script has an eyes stage ("...oh. So THIS is what you look like."). Keep it, or drop it and move those lines elsewhere?

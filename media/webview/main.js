@@ -115,8 +115,17 @@
     onboarding.append(heading, bar, sub);
 
     const ms = CFG.timing.analyzingMs;
-    fill.style.transitionDuration = ms + 'ms';
-    requestAnimationFrame(() => requestAnimationFrame(() => (fill.style.width = '100%')));
+    // Fill in stalls and bursts, segment by segment.
+    let prevT = 0;
+    for (const [tf, pf] of CFG.timing.analyzingCurve) {
+      const start = prevT * ms, dur = (tf - prevT) * ms;
+      later(start + 30, () => {
+        fill.style.transitionDuration = dur + 'ms';
+        fill.style.transitionTimingFunction = 'cubic-bezier(.2,.8,.3,1)';
+        fill.style.width = pf * 100 + '%';
+      });
+      prevT = tf;
+    }
 
     const steps = T.analyzing.steps;
     steps.forEach((step, i) => later((ms / steps.length) * i, () => (sub.textContent = step + '…')));
@@ -337,44 +346,99 @@
     if (P.eyes) place(P.eyes, cx + r * 0.3, cy - r * 0.3, r * 0.5, 'center', ink);
   }
 
-  // Rolls back and forth across the open stage area, spinning at the rate a
-  // circle of this radius would while rolling without slipping (angular
-  // speed = linear speed / radius), bouncing elastically off the walls.
-  const roll = { x: null, vx: CFG.roll.speed, angle: 0 };
+  // Clumsy rolling with real-ish physics. The body pivots about whichever point
+  // of the drawn shape is currently lowest, so it never sinks below the ground
+  // and lumpy drawings bob, rock, and get stuck. It pushes itself in uneven
+  // bursts, rests (slipping back a bit), and bonks off the walls.
+  // frustration goes up every push that gets nowhere (pushes get harder); later stages can read it.
+  const roll = { x: null, angle: 0, omega: 0, dir: 1, phase: 'rest', phaseLeft: 0, effort: 0, pushFromX: 0, frustration: 0, shape: null, src: null };
+  const rand = (lo, hi) => lo + Math.random() * (hi - lo);
 
   function resetRoll() {
-    roll.x = null;
-    roll.vx = CFG.roll.speed;
-    roll.angle = 0;
+    Object.assign(roll, { x: null, angle: 0, omega: 0, dir: 1, phase: 'rest', phaseLeft: 0.4, effort: 0, frustration: 0 });
+  }
+
+  // Normalized body points (centered at 0,0), cached per drawing.
+  function rollShape() {
+    if (roll.src !== state.parts.body) {
+      roll.src = state.parts.body;
+      roll.shape = normalize(state.parts.body, CFG.pet.bodyRadius * 2, 'center');
+      roll.points = roll.shape.flat();
+    }
+    return roll.points;
+  }
+
+  // Lowest point of the shape at the current angle, relative to the center.
+  function contactPoint(points, angle) {
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    let best = null;
+    for (const p of points) {
+      const x = p.x * cos - p.y * sin;
+      const y = p.x * sin + p.y * cos;
+      if (!best || y > best.y) best = { x, y };
+    }
+    return best;
   }
 
   function updateRoll(dt, cardLeft) {
+    const R = CFG.roll;
     const r = CFG.pet.bodyRadius;
     const min = 24 + r;
     const max = Math.max(min, cardLeft - r - 12);
     if (roll.x == null) roll.x = (min + max) / 2;
+    const points = rollShape();
 
-    roll.x += roll.vx * dt;
-    roll.angle += (roll.vx / r) * dt; // rolling without slipping
+    // Effort state machine: push → rest → push…, with random lengths and strength.
+    roll.phaseLeft -= dt;
+    if (roll.phaseLeft <= 0) {
+      if (roll.phase === 'push') {
+        const progress = (roll.x - roll.pushFromX) * roll.dir;
+        roll.frustration = progress < R.stuckPx ? Math.min(roll.frustration + 1, R.maxFrustration) : 0;
+        roll.phase = 'rest';
+        roll.phaseLeft = rand(...R.restSec);
+      } else {
+        roll.phase = 'push';
+        roll.phaseLeft = rand(...R.pushSec);
+        roll.pushFromX = roll.x;
+        roll.effort =
+          R.pushAccel * (1 + rand(-R.pushJitter, R.pushJitter)) * (1 + R.frustrationBoost * roll.frustration);
+      }
+    }
+    let motor = 0;
+    if (roll.phase === 'push') motor = roll.dir * roll.effort;
+    else if (roll.phase === 'rest') motor = -roll.dir * roll.effort * R.slipBack;
 
-    if (roll.x > max) {
-      roll.x = max - (roll.x - max);
-      roll.vx = -Math.abs(roll.vx);
-    } else if (roll.x < min) {
-      roll.x = min + (min - roll.x);
-      roll.vx = Math.abs(roll.vx);
+    // Gravity tips it toward whichever side its center hangs over the contact point.
+    const c = contactPoint(points, roll.angle);
+    const gravity = (-c.x / r) * R.gravity;
+
+    roll.omega += (motor + gravity - R.friction * roll.omega) * dt;
+    roll.angle += roll.omega * dt;
+    // Rolling without slipping about the contact point: center moves by ω × height.
+    roll.x += roll.omega * c.y * dt;
+
+    // Walls. A real hit bounces it back and dazes it; just leaning on the wall doesn't.
+    if (roll.x > max || roll.x < min) {
+      const atRight = roll.x > max;
+      roll.x = atRight ? max : min;
+      const speed = Math.abs(roll.omega);
+      if (atRight ? roll.omega > 0 : roll.omega < 0) roll.omega = -roll.omega * R.wallBounce;
+      roll.dir = atRight ? -1 : 1;
+      if (speed > 1 && roll.phase !== 'stunned') {
+        roll.phase = 'stunned';
+        roll.phaseLeft = R.stunnedSec;
+      }
     }
   }
 
-  // Rotates the user's drawn body shape around its own center, so the
-  // hand-drawn imperfections visibly spin with it.
+  // Draws the user's drawn body rotated about its center, lifted so its
+  // lowest point sits exactly on the ground line.
   function drawRollingCircle(c, groundY) {
-    const r = CFG.pet.bodyRadius;
-    const body = state.parts.body;
+    const lift = contactPoint(rollShape(), roll.angle).y;
     c.save();
-    c.translate(roll.x, groundY - r);
+    c.translate(roll.x, groundY - lift);
     c.rotate(roll.angle);
-    drawStrokes(c, normalize(body, r * 2, 'center'), cssVar('--ink'), CFG.pet.strokeWidth);
+    drawStrokes(c, roll.shape, cssVar('--ink'), CFG.pet.strokeWidth);
     c.restore();
   }
 

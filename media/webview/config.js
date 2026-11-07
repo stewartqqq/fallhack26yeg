@@ -35,8 +35,10 @@ window.SIDEKICK = {
   },
 
   timing: {
-    analyzingMs: 1600,
-    personalityLockedMs: 1100,
+    analyzingMs: 5200,        // total time the fake progress bar takes
+    personalityLockedMs: 2600, // how long "Personality locked in" stays up
+    // Fake progress bar: [fraction of time, fraction filled]. Stalls and bursts so it looks real.
+    analyzingCurve: [[0.1, 0.16], [0.28, 0.22], [0.4, 0.27], [0.48, 0.61], [0.66, 0.68], [0.8, 0.71], [0.9, 0.96], [1, 1]],
     recognizingMs: 700,
     toastMs: 1400,
   },
@@ -48,9 +50,22 @@ window.SIDEKICK = {
   },
 
   // Phase 4: once the circle is drawn (and until the first leg is), the body
-  // rolls back and forth across the open stage area, bouncing off the walls.
+  // tries to roll around. Real rolling physics: the lowest point of the drawn
+  // shape always touches the ground, so lumpy circles bob and get stuck.
+  // It pushes in clumsy bursts, rests (and slips back), and bonks off walls.
   roll: {
-    speed: 120, // px/sec horizontal speed while rolling
+    pushAccel: 10,           // rad/s² of effort while pushing
+    pushJitter: 0.6,         // ± fraction of random variation per push
+    pushSec: [0.3, 1.1],     // random push duration range
+    restSec: [0.25, 0.9],    // random rest duration range
+    slipBack: 0.25,          // while resting, rolls back with this fraction of push effort
+    gravity: 35,             // how hard lumps tip it over (torque per px of offset)
+    stuckPx: 15,             // a push that moves less than this counts as failed...
+    frustrationBoost: 0.5,   // ...and makes the next push this much harder (stacks)
+    maxFrustration: 4,
+    friction: 2.2,           // rolling resistance
+    wallBounce: 0.4,         // fraction of spin kept after bonking a wall
+    stunnedSec: 0.7,         // dazed after a wall bonk
   },
 
   // Chat heist (Ctrl+Alt+I): pet leaves the panel, hops to the AI chat, kicks it shut.
