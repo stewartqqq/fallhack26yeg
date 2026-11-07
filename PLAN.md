@@ -121,8 +121,9 @@ Replaces the original roast/tokens/pointing flow. All lines in `config.js → te
       has something on it and you stop typing. Wrong → "Nope." + hint. Right (either index order) →
       "It works. Good job. I guess. High five?"
 - [x] **highFive**: lifts its front leg; click it (body or leg) → impact burst + screen shake, it gets punched
-      into the screen (3D tumble, shrinking into the distance), lands far away on its back → "Okay. My
-      mission is over. I hope you're feeling better about solving this. I'm not."
+      into the screen (3D tumble), lands at half size on its back → "Okay. My
+      mission is over. I hope you're feeling better about solving this. I'm not." → gets up, turns
+      away and hops slowly off the left edge into the abyss, smaller with every hop (`config.js → punch.leave`)
 - [ ] Live run-through in VS Code, tune inspection positions
 
 ### Phase 7 — Confetti (optional)

@@ -820,12 +820,70 @@
       clickX, clickY,
       x0: walker.x,
       y0: groundY - r * 1.55,          // middle of the standing pet
-      fx: walker.x + (cardLeft / 2 - walker.x) * 0.4,
+      fx: walker.x + (cardLeft / 2 - walker.x) * 0.2,
+      horizon, groundY,
+      leaving: null, gone: false,
       fy: horizon + (groundY - horizon) * P.farScale - r * P.farScale, // lying far away, on the far "ground"
       dir: walker.dir,
     });
     goTo('done');
-    later((P.impactSec + P.flySec) * 1000 + 900, () => window.Speech.say(T.lines.bitter));
+    // bitter lines from where it landed, then it gets up and hops away into the abyss
+    later((P.impactSec + P.flySec) * 1000 + 900, () => window.Speech.say(T.lines.bitter, startLeaving));
+  }
+
+  // Where things stand at a given depth (scale s): smaller = further away = closer to the horizon.
+  const feetAt = (s) => punch.horizon + (punch.groundY - punch.horizon) * s;
+  const standingY = (s) => feetAt(s) - CFG.pet.bodyRadius * 1.55 * s; // center of the standing pet
+  const lyingY = (s) => feetAt(s) - CFG.pet.bodyRadius * s;          // center of the pet on its back
+
+  function startLeaving() {
+    // get up (still facing the way it was), then turn towards the left edge
+    walker.reset({ x: punch.x0, dir: punch.dir });
+    punch.leaving = { phase: 'getUp', t: 0, x: punch.fx, s: CFG.punch.farScale, last: performance.now() };
+  }
+
+  // After its last words: gets up, then slow, sad hops off to the left, each one a bit further
+  // into the distance, until it's gone.
+  function leaving(now, lying) {
+    const L = CFG.punch.leave;
+    const lv = punch.leaving;
+    const dt = Math.min(0.05, (now - lv.last) / 1000);
+    lv.last = now;
+    lv.t += dt;
+    const out = { x: lv.x, s: lv.s, y: standingY(lv.s), rz: 0, sx: 1, sy: 1 };
+    if (lv.phase === 'getUp') {
+      const k = Math.min(1, lv.t / L.getUpSec);
+      const e = k * k * (3 - 2 * k);
+      out.rz = lying * (1 - e) + 0.15 * Math.sin(k * Math.PI * 3) * (1 - k);
+      out.y = lyingY(lv.s) + (standingY(lv.s) - lyingY(lv.s)) * e;
+      if (k >= 1) Object.assign(lv, { phase: walker.dir === -1 ? 'rest' : 'turn', t: 0 });
+    } else if (lv.phase === 'turn') {
+      // paper-flip around to face the left edge
+      const k = Math.min(1, lv.t / 0.3);
+      out.sx = Math.cos(Math.PI * k);
+      if (k >= 1) {
+        walker.reset({ x: punch.x0, dir: -1 });
+        out.sx = 1;
+        Object.assign(lv, { phase: 'rest', t: 0 });
+      }
+    } else if (lv.phase === 'rest') {
+      out.sy = lv.t < 0.12 ? 1 - 0.18 * Math.sin(Math.PI * lv.t / 0.12) : 1; // landing squash
+      if (lv.t >= L.restSec) {
+        Object.assign(lv, { phase: 'hop', t: 0, fromX: lv.x, fromS: lv.s, toX: lv.x - L.stepPx * lv.s, toS: lv.s * L.shrink });
+      }
+    } else if (lv.phase === 'hop') {
+      const k = Math.min(1, lv.t / L.hopSec);
+      out.s = lv.fromS + (lv.toS - lv.fromS) * k;
+      out.x = lv.fromX + (lv.toX - lv.fromX) * k;
+      out.y = standingY(out.s) - L.hopHeight * out.s * Math.sin(Math.PI * k);
+      out.sy = 1 + 0.08 * Math.sin(Math.PI * k);
+      if (k >= 1) {
+        Object.assign(lv, { phase: 'rest', t: 0, x: lv.toX, s: lv.toS });
+        // off the edge, or too small to see: gone into the abyss
+        if (lv.x < -CFG.pet.bodyRadius * 3 * lv.s || lv.s < 0.05) punch.gone = true;
+      }
+    }
+    return out;
   }
 
   function drawPunch(c, now, groundY) {
@@ -854,6 +912,8 @@
       y = punch.fy - P.bounce * P.farScale * Math.abs(Math.sin(k * 9)) * Math.exp(-k * 5);
       rz = lying + (Math.random() < 0.01 ? 0.08 : 0); // the odd twitch
       sy = k < 0.12 ? 1 - 0.3 * Math.sin(Math.PI * k / 0.12) : 1;
+      if (punch.leaving) ({ x, y, s, rz, sx, sy } = leaving(now, lying));
+      if (punch.gone) return;
     }
     punch.x = x;
     punch.y = y;

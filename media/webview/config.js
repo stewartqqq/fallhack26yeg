@@ -113,7 +113,7 @@ window.SIDEKICK = {
   punch: {
     impactSec: 0.12,  // squashed toward you
     flySec: 1.3,      // flight into the distance
-    farScale: 0.28,   // how small it is when it lands far away
+    farScale: 0.5,    // how small it is when it lands (smaller = further away)
     horizon: 0.35,    // where the horizon is (fraction of the ground's height); far things sit closer to it
     arc: 70,          // px it rises during the flight
     flipsX: 2,        // head-over-heels flips
@@ -122,6 +122,15 @@ window.SIDEKICK = {
     shake: 7,         // screen shake on impact, px
     shakeSec: 0.35,
     burstSec: 0.3,    // impact lines where you clicked
+    // after its last words: gets up and hops slowly away into the abyss (off the left edge)
+    leave: {
+      getUpSec: 0.9,
+      restSec: 0.45,    // pause between hops
+      hopSec: 0.55,
+      hopHeight: 36,    // px, scaled by distance
+      stepPx: 150,      // px per hop, scaled by distance
+      shrink: 0.88,     // each hop goes a bit further into the distance
+    },
   },
 
   // The creature's speech cloud (speech.js).
