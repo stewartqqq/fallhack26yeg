@@ -120,10 +120,11 @@ class SidekickViewProvider implements vscode.WebviewViewProvider {
     </div>
   </aside>
 
-  <div id="toast" class="hidden"></div>
+  <div id="note" class="hidden"></div>
 
   <script nonce="${nonce}" src="${media('webview', 'config.js')}"></script>
   <script nonce="${nonce}" src="${media('webview', 'scenery.js')}"></script>
+  <script nonce="${nonce}" src="${media('webview', 'speech.js')}"></script>
   <script nonce="${nonce}" src="${media('webview', 'main.js')}"></script>
 </body>
 </html>`;
