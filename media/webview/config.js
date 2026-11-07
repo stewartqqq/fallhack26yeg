@@ -47,8 +47,8 @@ window.SIDEKICK = {
     strokeWidth: 3,
   },
 
-  // Phase 4: during the 'circle' stage the body rolls back and forth across
-  // the open stage area, bouncing off the walls.
+  // Phase 4: once the circle is drawn (and until the first leg is), the body
+  // rolls back and forth across the open stage area, bouncing off the walls.
   roll: {
     speed: 120, // px/sec horizontal speed while rolling
   },

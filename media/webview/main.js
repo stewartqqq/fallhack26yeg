@@ -27,7 +27,6 @@
     state.timers.forEach(clearTimeout);
     state.timers = [];
     state.busy = false;
-    if (stage === 'circle' && state.stage !== 'circle') resetRoll();
     state.stage = stage;
     vscode.postMessage({ type: 'stage', stage });
     render();
@@ -40,6 +39,7 @@
 
   function reset() {
     state.parts = {};
+    resetRoll();
     clearPad();
     hideToast();
     goTo(CFG.stages[0]);
@@ -246,6 +246,7 @@
     if (!drawn.length) return toast(T.draw.empty);
 
     state.parts[part] = drawn;
+    if (part === 'body') resetRoll(); // start rolling from the middle
     state.busy = true;
     clearPad();
     toast(T.draw.recognizing, 0);
@@ -365,11 +366,11 @@
     }
   }
 
-  // Rotates the actual drawn (or default wobbly) body shape around its own
-  // center, so the hand-drawn imperfections visibly spin with it.
+  // Rotates the user's drawn body shape around its own center, so the
+  // hand-drawn imperfections visibly spin with it.
   function drawRollingCircle(c, groundY) {
     const r = CFG.pet.bodyRadius;
-    const body = state.parts.body || defaultParts().body;
+    const body = state.parts.body;
     c.save();
     c.translate(roll.x, groundY - r);
     c.rotate(roll.angle);
@@ -395,7 +396,8 @@
       if (!state.petAway) {
         // Center the pet in the free space left of the drawing card.
         const cardLeft = card.classList.contains('hidden') ? width : card.offsetLeft;
-        if (state.stage === 'circle') {
+        // Just a circle so far (drawn, no legs yet): it rolls around.
+        if (state.parts.body && !state.parts.legLeft) {
           updateRoll(dt, cardLeft);
           drawRollingCircle(ctx, groundY);
         } else {
