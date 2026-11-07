@@ -153,13 +153,14 @@ window.SIDEKICK = {
     draw: {
       empty: 'draw something first, genius',
     },
-    // App notes in the top-right corner: what to draw next, per stage. (The app talking.)
+    // App notes in the top-right corner: what to draw next, per stage. The app talking to
+    // the user, never the creature (it can't talk until it has a mouth).
     notes: {
       circle: 'draw a circle.',
-      oneLeg: 'give me legs.',
+      oneLeg: 'now draw a leg.',
       twoLegs: 'draw another leg, dumbass.',
       mouth: 'give it a mouth.',
-      eyes: 'it wants eyes.',
+      eyes: 'now draw the eyes.',
     },
     // The creature talking (cloud bubbles). Plays when the part is drawn.
     lines: {
