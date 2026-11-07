@@ -1,21 +1,36 @@
 import * as vscode from 'vscode';
 import * as crypto from 'crypto';
+import * as path from 'path';
+import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 
 // Messages the extension sends into the webview.
 type ToWebview =
   | { type: 'next' }
   | { type: 'reset' }
-  | { type: 'replay' };
+  | { type: 'replay' }
+  | { type: 'getHeist'; id: number }
+  | { type: 'petAway'; away: boolean };
+
+type HeistConfig = {
+  line: string;
+  startXFrac: number;
+  startYFromBottom: number;
+  chatXFromRight: number;
+  chatYFrac: number;
+};
 
 // Messages the webview sends back.
 type FromWebview =
   | { type: 'stage'; stage: string }
-  | { type: 'log'; text: string };
+  | { type: 'log'; text: string }
+  | { type: 'heist'; id: number; png: string; heist: HeistConfig };
 
 class SidekickViewProvider implements vscode.WebviewViewProvider {
   static readonly viewId = 'sidekick.view';
 
   private view?: vscode.WebviewView;
+  private heistRequests = new Map<number, (r: { png: string; heist: HeistConfig }) => void>();
+  private nextId = 1;
   /** Current stage as reported by the webview. Used later for editor detection. */
   stage = 'character';
 
@@ -34,6 +49,9 @@ class SidekickViewProvider implements vscode.WebviewViewProvider {
         this.stage = msg.stage;
       } else if (msg.type === 'log') {
         console.log('[sidekick]', msg.text);
+      } else if (msg.type === 'heist') {
+        this.heistRequests.get(msg.id)?.(msg);
+        this.heistRequests.delete(msg.id);
       }
     });
   }
@@ -44,6 +62,17 @@ class SidekickViewProvider implements vscode.WebviewViewProvider {
       await vscode.commands.executeCommand(`${SidekickViewProvider.viewId}.focus`);
     }
     this.view?.webview.postMessage(msg);
+  }
+
+  /** Ask the webview for the pet PNG + heist config (positions, line). */
+  async requestHeist(): Promise<{ png: string; heist: HeistConfig } | undefined> {
+    const id = this.nextId++;
+    const reply = new Promise<{ png: string; heist: HeistConfig }>((resolve) =>
+      this.heistRequests.set(id, resolve)
+    );
+    await this.post({ type: 'getHeist', id });
+    const timeout = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 1500));
+    return Promise.race([reply, timeout]);
   }
 
   private getHtml(webview: vscode.Webview): string {
@@ -100,8 +129,92 @@ class SidekickViewProvider implements vscode.WebviewViewProvider {
   }
 }
 
+/**
+ * Desktop overlay (media/overlay.ps1): a transparent, click-through, always-on-top window
+ * that lets the pet leave the panel. Spawned once up front because PowerShell takes ~1.5s to start.
+ */
+class Overlay {
+  private proc?: ChildProcessWithoutNullStreams;
+  private listeners: ((line: string) => void)[] = [];
+
+  constructor(private readonly extensionUri: vscode.Uri, private readonly log: vscode.OutputChannel) {}
+
+  start() {
+    if (this.proc && this.proc.exitCode === null) return;
+    const media = vscode.Uri.joinPath(this.extensionUri, 'media').fsPath;
+    const proc = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-File', path.join(media, 'overlay.ps1'), path.join(media, 'fonts') + path.sep],
+      { windowsHide: true }
+    );
+    let buf = '';
+    proc.stdout.on('data', (d) => {
+      buf += d.toString();
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        this.log.appendLine(`overlay: ${line}`);
+        this.listeners.forEach((l) => l(line));
+      }
+    });
+    proc.stderr.on('data', (d) => this.log.append(`overlay error: ${d}`));
+    proc.on('exit', (code) => this.log.appendLine(`overlay exited (${code})`));
+    this.proc = proc;
+  }
+
+  onLine(fn: (line: string) => void) {
+    this.listeners.push(fn);
+  }
+
+  heist(png: string, h: HeistConfig) {
+    this.start();
+    const line = h.line.replace(/[\t\r\n]/g, ' ');
+    this.proc!.stdin.write(
+      ['heist', line, h.startXFrac, h.startYFromBottom, h.chatXFromRight, h.chatYFrac, png].join('\t') + '\n'
+    );
+  }
+
+  dispose() {
+    this.proc?.kill();
+  }
+}
+
 export function activate(context: vscode.ExtensionContext) {
   const provider = new SidekickViewProvider(context.extensionUri);
+  const log = vscode.window.createOutputChannel('Sidekick');
+  const overlay = new Overlay(context.extensionUri, log);
+  overlay.start();
+
+  // Chat heist: we own the chat shortcut, so we know exactly when chat gets opened.
+  let heistRunning = false;
+  let heistSafety: NodeJS.Timeout | undefined;
+  const endHeist = () => {
+    clearTimeout(heistSafety);
+    heistRunning = false;
+    provider.post({ type: 'petAway', away: false });
+  };
+  overlay.onLine((line) => {
+    if (line === 'kick') vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
+    else if (line === 'done') endHeist();
+  });
+
+  const chatHeist = async () => {
+    await vscode.commands.executeCommand('workbench.action.chat.open');
+    if (heistRunning) return;
+    heistRunning = true;
+    const req = await provider.requestHeist();
+    if (!req) {
+      log.appendLine('heist: webview did not answer');
+      heistRunning = false;
+      return;
+    }
+    // Let the chat finish opening so the pet visibly "notices" it.
+    await new Promise((r) => setTimeout(r, 500));
+    provider.post({ type: 'petAway', away: true });
+    overlay.heist(req.png, req.heist);
+    heistSafety = setTimeout(endHeist, 12000); // never leave the pet stranded
+  };
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(SidekickViewProvider.viewId, provider, {
@@ -111,6 +224,9 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('sidekick.next', () => provider.post({ type: 'next' })),
     vscode.commands.registerCommand('sidekick.reset', () => provider.post({ type: 'reset' })),
     vscode.commands.registerCommand('sidekick.replay', () => provider.post({ type: 'replay' })),
+    vscode.commands.registerCommand('sidekick.chatHeist', chatHeist),
+    log,
+    overlay,
   );
 }
 

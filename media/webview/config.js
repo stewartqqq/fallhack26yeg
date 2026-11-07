@@ -47,6 +47,17 @@ window.SIDEKICK = {
     strokeWidth: 3,
   },
 
+  // Chat heist (Ctrl+Alt+I): pet leaves the panel, hops to the AI chat, kicks it shut.
+  // Positions are in screen units relative to the VS Code window (DPI-scaled, so ~CSS px).
+  heist: {
+    line: 'Do it yourself.',
+    petScale: 1.4,          // overlay pet size vs. panel pet
+    startXFrac: 0.4,        // where the pet leaves the panel: fraction of window width
+    startYFromBottom: 60,   // ...and px above the window's bottom edge
+    chatXFromRight: 260,    // where it lands, just left of the chat: px from window's right edge
+    chatYFrac: 0.4,         // ...and fraction of window height
+  },
+
   text: {
     character: {
       title: 'Pick your sidekick’s personality',

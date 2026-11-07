@@ -313,23 +313,19 @@
   }
 
   // Static placement of drawn parts (Phase 3). Animation comes in Phase 4.
-  function drawPet() {
-    const { bodyRadius: r, groundOffset, strokeWidth } = CFG.pet;
-    const groundY = stageSize.height - groundOffset;
+  // Draws the pet standing on (cx, groundY) with body radius r.
+  function drawPet(c, cx, groundY, r, P = state.parts) {
+    const strokeWidth = CFG.pet.strokeWidth * (r / CFG.pet.bodyRadius);
     const legLen = r * 1.1;
-    // Center the pet in the free space left of the drawing card.
-    const cardLeft = card.classList.contains('hidden') ? stageSize.width : card.offsetLeft;
-    const cx = cardLeft / 2;
     const cy = groundY - legLen - r;
     const ink = cssVar('--ink');
     const muted = cssVar('--ink-muted');
-    const P = state.parts;
 
     const place = (strokes, x, y, size, anchor, color) => {
-      ctx.save();
-      ctx.translate(x, y);
-      drawStrokes(ctx, normalize(strokes, size, anchor), color, strokeWidth);
-      ctx.restore();
+      c.save();
+      c.translate(x, y);
+      drawStrokes(c, normalize(strokes, size, anchor), color, strokeWidth);
+      c.restore();
     };
 
     if (P.legRight) place(P.legRight, cx + 3, cy + r - 2, legLen, 'top', muted); // back leg
@@ -351,9 +347,47 @@
       ctx.moveTo(24, groundY);
       ctx.lineTo(width - 24, groundY);
       ctx.stroke();
-      drawPet();
+      if (!state.petAway) {
+        // Center the pet in the free space left of the drawing card.
+        const cardLeft = card.classList.contains('hidden') ? width : card.offsetLeft;
+        drawPet(ctx, cardLeft / 2, groundY, CFG.pet.bodyRadius);
+      }
     }
     requestAnimationFrame(frame);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Chat heist: export the pet as a PNG for the desktop overlay window
+  // ---------------------------------------------------------------------------
+  // Stand-in stickman, used when nothing has been drawn yet.
+  function defaultParts() {
+    const circle = [];
+    for (let a = 0; a <= Math.PI * 2 + 0.3; a += 0.25) {
+      const wob = 1 + Math.sin(a * 3) * 0.04;
+      circle.push({ x: Math.cos(a) * 40 * wob, y: Math.sin(a) * 38 * wob });
+    }
+    const leg = [{ x: 0, y: 0 }, { x: -6, y: 18 }, { x: 2, y: 36 }, { x: 16, y: 37 }];
+    return {
+      body: [circle],
+      legLeft: [leg],
+      legRight: [leg.map((p) => ({ x: p.x + 4, y: p.y }))],
+      mouth: [[{ x: 0, y: 0 }, { x: 12, y: -1 }]],
+    };
+  }
+
+  function petPng() {
+    const r = CFG.pet.bodyRadius * CFG.heist.petScale;
+    const margin = 10;
+    const w = r * 2 + margin * 2;
+    const h = r * 2 + r * 1.1 + margin * 2;
+    const density = 2; // render at 2x so it stays crisp on HiDPI screens
+    const c = document.createElement('canvas');
+    c.width = Math.ceil(w * density);
+    c.height = Math.ceil(h * density);
+    const g = c.getContext('2d');
+    g.scale(density, density);
+    drawPet(g, w / 2, h - margin, r, state.parts.body ? state.parts : defaultParts());
+    return c.toDataURL('image/png').split(',')[1];
   }
 
   // ---------------------------------------------------------------------------
@@ -363,7 +397,11 @@
     const msg = e.data;
     if (msg.type === 'next') next();
     else if (msg.type === 'reset') reset();
-    else if (msg.type === 'replay') {
+    else if (msg.type === 'getHeist') {
+      vscode.postMessage({ type: 'heist', id: msg.id, png: petPng(), heist: CFG.heist });
+    } else if (msg.type === 'petAway') {
+      state.petAway = msg.away;
+    } else if (msg.type === 'replay') {
       // Phase 8: submit recorded strokes for the current part.
       vscode.postMessage({ type: 'log', text: 'replay not implemented yet' });
     }
