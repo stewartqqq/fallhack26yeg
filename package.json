@@ -1,0 +1,57 @@
+{
+  "name": "digital-sidekick",
+  "displayName": "Digital Sidekick",
+  "description": "A hand-drawn evil pet that lives in your panel and roasts your code.",
+  "version": "0.0.1",
+  "publisher": "fallhack26yeg",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "sidekick",
+          "title": "Sidekick",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "sidekick": [
+        {
+          "type": "webview",
+          "id": "sidekick.view",
+          "name": "Sidekick"
+        }
+      ]
+    },
+    "commands": [
+      { "command": "sidekick.next", "title": "Sidekick: Next Stage" },
+      { "command": "sidekick.reset", "title": "Sidekick: Reset" },
+      { "command": "sidekick.replay", "title": "Sidekick: Replay Recorded Drawing" }
+    ],
+    "keybindings": [
+      { "command": "sidekick.next", "key": "ctrl+alt+n", "mac": "cmd+alt+n" },
+      { "command": "sidekick.reset", "key": "ctrl+alt+r", "mac": "cmd+alt+r" },
+      { "command": "sidekick.replay", "key": "ctrl+alt+p", "mac": "cmd+alt+p" }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.4.0"
+  }
+}
