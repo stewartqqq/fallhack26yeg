@@ -32,6 +32,35 @@
     state.stage = stage;
     vscode.postMessage({ type: 'stage', stage });
     render();
+    enterStage(stage);
+  }
+
+  // What happens when a story stage starts (also when skipped to with Ctrl+Alt+N).
+  function enterStage(stage) {
+    const L = T.lines;
+    if (stage === 'eyes') {
+      // still ranting (mouth stage) — keep it going until the eyes are drawn
+      if (!window.Speech.busy()) rantOn();
+    } else if (stage === 'inspect') {
+      walker.mode = 'idle';
+      window.Speech.say(L.eyes, startInspect); // "…oh. so THIS is what you look like", then off to the code
+    } else if (stage === 'highFive') {
+      state.codeReady = false;
+      window.Speech.say(L.goodJob, () => {
+        walker.highFive();
+        setNote(T.notes.highFive);
+      });
+    }
+  }
+
+  // Mouth stage rant: after the main rant, it keeps going with one loop line at a time.
+  let rantIndex = 0;
+  function rantOn() {
+    later(CFG.timing.rantPauseMs, () => {
+      if (state.stage !== 'eyes') return;
+      const loop = T.lines.mouthLoop;
+      window.Speech.say([loop[rantIndex++ % loop.length]], rantOn);
+    });
   }
 
   function next() {
@@ -41,6 +70,9 @@
 
   function reset() {
     state.parts = {};
+    punch.active = false;
+    state.codeReady = false;
+    state.petAway = false;
     state.petX = null;
     state.bodyAngle = 0;
     resetRoll();
@@ -59,9 +91,10 @@
     else if (s === 'sprite') renderSprite();
 
     card.classList.toggle('hidden', ONBOARDING.includes(s));
-    const tokensVisible = ['roasted', 'tokens', 'pointing'].includes(s);
-    $('btn-tokens').classList.toggle('hidden', !tokensVisible);
-    showNote();
+    $('btn-submit').classList.toggle('hidden', !(s === 'coding' && state.codeReady));
+    // the highFive note only appears once it actually asks for the high five
+    if (s === 'highFive') setNote(null);
+    else showNote();
   }
 
   // ---------------------------------------------------------------------------
@@ -274,7 +307,7 @@
     if (part === 'body') resetRoll(); // start rolling from the middle
     if (part === 'leg1') resetHop();
     if (part === 'leg2') walker.reset({ x: hop.cx, angle: hop.angle }); // gets up by itself, then walks
-    if (part === 'mouth') window.Speech.say(T.lines.mouth); // first words
+    if (part === 'mouth') window.Speech.say(T.lines.mouth, rantOn); // first words: an existential rant
     clearPad();
     Sound.pop(true);
     next();
@@ -282,9 +315,7 @@
 
   $('btn-done').addEventListener('click', () => submitDrawing(strokes));
   $('btn-clear').addEventListener('click', clearPad);
-  $('btn-tokens').addEventListener('click', () => {
-    // Phase 6: fake usage-limit modal.
-  });
+  $('btn-submit').addEventListener('click', () => vscode.postMessage({ type: 'submitCode' }));
 
   // ---------------------------------------------------------------------------
   // Stage rendering (one canvas, requestAnimationFrame)
@@ -351,6 +382,13 @@
 
   // Static placement of drawn parts (Phase 3). Animation comes in Phase 4.
   // Draws the pet standing on (cx, groundY) with body radius r.
+  const blink = { until: 0, next: 0 };
+  function updateBlink(now) {
+    if (now < blink.next) return;
+    blink.until = now + 120;
+    blink.next = now + 1800 + Math.random() * 3500;
+  }
+
   // legPose (optional): { a1, a2 } leg angles around the hips, { lift1, lift2 } foot lift.
   function drawPet(c, cx, groundY, r, P = state.parts, legPose = null) {
     const strokeWidth = CFG.pet.strokeWidth * (r / CFG.pet.bodyRadius);
@@ -391,7 +429,17 @@
         c.restore();
       } else place(P.mouth, mx, my, r * 0.4, 'center', ink);
     }
-    if (P.eyes) place(P.eyes, cx + r * 0.3, cy - r * 0.3, r * 0.5, 'center', ink);
+    if (P.eyes) {
+      // blinks every few seconds (squashed flat for a moment)
+      const ex = cx + r * 0.3, ey = cy - r * 0.3;
+      if (c === ctx && performance.now() < blink.until) {
+        c.save();
+        c.translate(ex, ey);
+        c.scale(1, 0.12);
+        place(P.eyes, 0, 0, r * 0.5, 'center', ink);
+        c.restore();
+      } else place(P.eyes, ex, ey, r * 0.5, 'center', ink);
+    }
   }
 
   // Clumsy rolling with real-ish physics. The body pivots about whichever point
@@ -721,8 +769,9 @@
   }
 
   stage.addEventListener('pointerdown', (e) => {
-    if (ONBOARDING.includes(state.stage) || state.petAway) return;
+    if (ONBOARDING.includes(state.stage) || state.petAway || punch.active) return;
     if (!pokeHit(e.offsetX, e.offsetY)) return;
+    if (state.stage === 'highFive' && walker.phase === 'highFive') return highFive(e.offsetX, e.offsetY);
     stage.setPointerCapture(e.pointerId);
     poke.dragging = true;
     poke.pointerId = e.pointerId;
@@ -753,6 +802,150 @@
   stage.addEventListener('pointerup', endPoke);
   stage.addEventListener('pointercancel', endPoke);
 
+  // You high-fived it. It can't take it: falls over, stays down, bitter.
+  // The "high five" is more of a punch: it gets launched into the screen, tumbling in 3D,
+  // and lands far away, tiny, on its back. Then it says its bitter lines from back there.
+  const punch = { active: false };
+  function highFive(clickX, clickY) {
+    Sound.thud();
+    Sound.pop(true);
+    const r = CFG.pet.bodyRadius;
+    const cardLeft = card.classList.contains('hidden') ? stageSize.width : card.offsetLeft;
+    const groundY = stageSize.height - CFG.pet.groundOffset;
+    const P = CFG.punch;
+    const horizon = groundY * P.horizon;
+    Object.assign(punch, {
+      active: true,
+      t0: performance.now(),
+      clickX, clickY,
+      x0: walker.x,
+      y0: groundY - r * 1.55,          // middle of the standing pet
+      fx: walker.x + (cardLeft / 2 - walker.x) * 0.2,
+      horizon, groundY,
+      leaving: null, gone: false,
+      fy: horizon + (groundY - horizon) * P.farScale - r * P.farScale, // lying far away, on the far "ground"
+      dir: walker.dir,
+    });
+    goTo('done');
+    // bitter lines from where it landed, then it gets up and hops away into the abyss
+    later((P.impactSec + P.flySec) * 1000 + 900, () => window.Speech.say(T.lines.bitter, startLeaving));
+  }
+
+  // Where things stand at a given depth (scale s): smaller = further away = closer to the horizon.
+  const feetAt = (s) => punch.horizon + (punch.groundY - punch.horizon) * s;
+  const standingY = (s) => feetAt(s) - CFG.pet.bodyRadius * 1.55 * s; // center of the standing pet
+  const lyingY = (s) => feetAt(s) - CFG.pet.bodyRadius * s;          // center of the pet on its back
+
+  function startLeaving() {
+    // get up (still facing the way it was), then turn towards the left edge
+    walker.reset({ x: punch.x0, dir: punch.dir });
+    punch.leaving = { phase: 'getUp', t: 0, x: punch.fx, s: CFG.punch.farScale, last: performance.now() };
+  }
+
+  // After its last words: gets up, then slow, sad hops off to the left, each one a bit further
+  // into the distance, until it's gone.
+  function leaving(now, lying) {
+    const L = CFG.punch.leave;
+    const lv = punch.leaving;
+    const dt = Math.min(0.05, (now - lv.last) / 1000);
+    lv.last = now;
+    lv.t += dt;
+    const out = { x: lv.x, s: lv.s, y: standingY(lv.s), rz: 0, sx: 1, sy: 1 };
+    if (lv.phase === 'getUp') {
+      const k = Math.min(1, lv.t / L.getUpSec);
+      const e = k * k * (3 - 2 * k);
+      out.rz = lying * (1 - e) + 0.15 * Math.sin(k * Math.PI * 3) * (1 - k);
+      out.y = lyingY(lv.s) + (standingY(lv.s) - lyingY(lv.s)) * e;
+      if (k >= 1) Object.assign(lv, { phase: walker.dir === -1 ? 'rest' : 'turn', t: 0 });
+    } else if (lv.phase === 'turn') {
+      // paper-flip around to face the left edge
+      const k = Math.min(1, lv.t / 0.3);
+      out.sx = Math.cos(Math.PI * k);
+      if (k >= 1) {
+        walker.reset({ x: punch.x0, dir: -1 });
+        out.sx = 1;
+        Object.assign(lv, { phase: 'rest', t: 0 });
+      }
+    } else if (lv.phase === 'rest') {
+      out.sy = lv.t < 0.12 ? 1 - 0.18 * Math.sin(Math.PI * lv.t / 0.12) : 1; // landing squash
+      if (lv.t >= L.restSec) {
+        Object.assign(lv, { phase: 'hop', t: 0, fromX: lv.x, fromS: lv.s, toX: lv.x - L.stepPx * lv.s, toS: lv.s * L.shrink });
+      }
+    } else if (lv.phase === 'hop') {
+      const k = Math.min(1, lv.t / L.hopSec);
+      out.s = lv.fromS + (lv.toS - lv.fromS) * k;
+      out.x = lv.fromX + (lv.toX - lv.fromX) * k;
+      out.y = standingY(out.s) - L.hopHeight * out.s * Math.sin(Math.PI * k);
+      out.sy = 1 + 0.08 * Math.sin(Math.PI * k);
+      if (k >= 1) {
+        Object.assign(lv, { phase: 'rest', t: 0, x: lv.toX, s: lv.toS });
+        // off the edge, or too small to see: gone into the abyss
+        if (lv.x < -CFG.pet.bodyRadius * 3 * lv.s || lv.s < 0.05) punch.gone = true;
+      }
+    }
+    return out;
+  }
+
+  function drawPunch(c, now, groundY) {
+    const P = CFG.punch;
+    const el = (now - punch.t0) / 1000;
+    let s = 1, x = punch.x0, y = punch.y0, sx = 1, sy = 1, rz = 0;
+    const lying = -punch.dir * Math.PI / 2; // ends up on its back
+    if (el < P.impactSec) {
+      // squashed toward you for a split second
+      s = 1 + 0.18 * Math.sin(Math.PI * el / P.impactSec);
+    } else if (el < P.impactSec + P.flySec) {
+      const k = (el - P.impactSec) / P.flySec;
+      const e = 1 - Math.pow(1 - k, 2); // fast at first, then drifts into the distance
+      s = 1 + (P.farScale - 1) * e;
+      x = punch.x0 + (punch.fx - punch.x0) * e;
+      y = punch.y0 + (punch.fy - punch.y0) * e - P.arc * Math.sin(Math.PI * k);
+      // 3D tumble: flipping head over heels (x axis) and spinning around (y axis)
+      sy = Math.cos(2 * Math.PI * P.flipsX * e);
+      sx = Math.cos(2 * Math.PI * P.spinsY * e);
+      rz = lying * e;
+    } else {
+      // lands, bounces, lies there
+      const k = el - P.impactSec - P.flySec;
+      s = P.farScale;
+      x = punch.fx;
+      y = punch.fy - P.bounce * P.farScale * Math.abs(Math.sin(k * 9)) * Math.exp(-k * 5);
+      rz = lying + (Math.random() < 0.01 ? 0.08 : 0); // the odd twitch
+      sy = k < 0.12 ? 1 - 0.3 * Math.sin(Math.PI * k / 0.12) : 1;
+      if (punch.leaving) ({ x, y, s, rz, sx, sy } = leaving(now, lying));
+      if (punch.gone) return;
+    }
+    punch.x = x;
+    punch.y = y;
+    punch.s = s;
+    c.save();
+    c.translate(x, y);
+    c.rotate(rz);
+    c.scale(s * sx, s * sy);
+    c.translate(-punch.x0, -punch.y0);
+    walker.draw(c, groundY);
+    c.restore();
+
+    // impact burst where you clicked
+    if (el < P.burstSec) {
+      const k = el / P.burstSec;
+      c.save();
+      c.strokeStyle = cssVar('--ink');
+      c.lineWidth = 3;
+      c.lineCap = 'round';
+      c.globalAlpha = 1 - k;
+      for (let i = 0; i < 9; i++) {
+        const a = (i / 9) * Math.PI * 2 + 0.3;
+        const r0 = 10 + 30 * k, r1 = r0 + 14 * (1 - k) + 6;
+        c.beginPath();
+        c.moveTo(punch.clickX + Math.cos(a) * r0, punch.clickY + Math.sin(a) * r0);
+        c.lineTo(punch.clickX + Math.cos(a) * r1, punch.clickY + Math.sin(a) * r1);
+        c.stroke();
+      }
+      c.restore();
+    }
+  }
+
   // Rotates whatever drawFn() draws around (pivotX, pivotY) by the current poke tilt.
   function drawWithPoke(drawFn, pivotX, pivotY) {
     if (!poke.tilt) return drawFn();
@@ -766,7 +959,7 @@
 
   // Two legs: walking (walk.js).
   const walker = window.createWalker({ CFG, state, normalize, drawPet });
-  const walking = () => state.parts.leg2 && !state.parts.mouth;
+  const walking = () => !!state.parts.leg2; // walker draws it from now on (walks, or stands while talking)
 
   let lastFrameT = null;
   function frame(t) {
@@ -774,6 +967,12 @@
     lastFrameT = t;
     const { width, height } = stageSize;
     ctx.clearRect(0, 0, width, height);
+    ctx.save();
+    if (punch.active) {
+      const el = (performance.now() - punch.t0) / 1000;
+      const shake = CFG.punch.shake * Math.max(0, 1 - el / CFG.punch.shakeSec);
+      if (shake > 0) ctx.translate((Math.random() - 0.5) * 2 * shake, (Math.random() - 0.5) * 2 * shake);
+    }
 
     if (!ONBOARDING.includes(state.stage)) {
       const groundY = height - CFG.pet.groundOffset;
@@ -820,14 +1019,24 @@
           petHitR = CFG.pet.bodyRadius * 1.7;
           drawWithPoke(() => drawHop(ctx, groundY - poke.lift), hop.cx, groundY);
           state.petX = hop.footX;
+        } else if (punch.active) {
+          drawPunch(ctx, performance.now(), groundY);
         } else if (walking()) {
-          // Two legs, no mouth yet: walks around (blind). Picked up: legs kick in the air.
+          // Two legs: walks around (blind) until it has a mouth, then stands and talks.
+          // Picked up: legs kick in the air.
           const r = CFG.pet.bodyRadius;
+          if (state.parts.mouth && walker.phase !== 'highFive') walker.mode = 'idle';
+          updateBlink(performance.now());
           if (poke.dragging) walker.drag(poke.targetX ?? walker.x, t);
           else walker.update(dt, 24 + r, Math.max(24 + r, cardLeft - r - 12));
           petScreenX = walker.x;
           petScreenY = groundY - r * 1.6;
           petHitR = r * 1.7;
+          if (walker.phase === 'highFive') {
+            // easy to hit: the body or the raised leg (the "hand" it's offering)
+            petScreenX = walker.x + walker.dir * r * 0.6;
+            petHitR = r * 2.3;
+          }
           drawWithPoke(() => walker.draw(ctx, groundY - poke.lift), walker.x, groundY);
           state.petX = walker.x;
         } else {
@@ -842,9 +1051,14 @@
         const r = CFG.pet.bodyRadius;
         const px = state.petX ?? cardLeft / 2;
         const mouthY = groundY - r * 1.1 - r + r * 0.15;
-        window.Speech.draw(ctx, t, px + r * 0.55, mouthY, cardLeft, cssVar('--bubble-ink'), cssVar('--bubble-bg'));
+        const facing = walking() ? walker.dir : 1; // mouth is on the side it faces
+        // punched far away: talk from wherever it ended up
+        const ax = punch.active ? punch.x + r * punch.s : px + facing * r * 0.55;
+        const ay = punch.active ? punch.y - r * punch.s : mouthY;
+        window.Speech.draw(ctx, t, ax, ay, cardLeft, cssVar('--bubble-ink'), cssVar('--bubble-bg'));
       }
     }
+    ctx.restore(); // (shake)
     requestAnimationFrame(frame);
   }
 
@@ -898,6 +1112,23 @@
     } else if (msg.type === 'petAway') {
       if (!msg.away) landPetAt(msg.landX);
       state.petAway = msg.away;
+    } else if (msg.type === 'inspectDone') {
+      landPetAt(msg.landX);
+      state.petAway = false;
+      goTo('coding');
+      window.Speech.say(T.lines.inspectDone);
+    } else if (msg.type === 'rageQuit') {
+      // you deleted everything: it talks you out of it and pastes the code back
+      if (state.stage !== 'coding') return;
+      window.Speech.say(T.lines.dontGiveUp, () => vscode.postMessage({ type: 'restoreCode' }));
+    } else if (msg.type === 'restored') {
+      later(CFG.timing.hintDelayMs, () => window.Speech.say(T.lines.hint));
+    } else if (msg.type === 'codeReady') {
+      state.codeReady = msg.ready;
+      render();
+    } else if (msg.type === 'submitResult') {
+      if (msg.ok) goTo('highFive');
+      else window.Speech.say([...T.lines.wrong, ...T.lines.hint]);
     } else if (msg.type === 'replay') {
       // Phase 8: submit recorded strokes for the current part.
       vscode.postMessage({ type: 'log', text: 'replay not implemented yet' });
@@ -927,7 +1158,26 @@
       groundY: screenOffset.y + stageSize.height - CFG.pet.groundOffset,
       minX: screenOffset.x + 24 + r,
       maxX: screenOffset.x + cardLeft - r - 12,
+      left: screenOffset.x,
+      top: screenOffset.y,
+      width: stageSize.width,
     };
+  }
+
+  // The editor sits right above the panel, so the panel's screen rect tells the overlay where the code is.
+  function startInspect() {
+    const panel = heistPanel();
+    if (!panel) {
+      // never touched the panel, so we don't know where it is on screen: skip the trip
+      goTo('coding');
+      window.Speech.say(T.lines.inspectDone);
+      return;
+    }
+    state.petAway = true;
+    vscode.postMessage({
+      type: 'inspect', png: petPng(), panel, margin: PNG_MARGIN, endScale: 1 / CFG.heist.petScale,
+      inspect: CFG.inspect, lines: T.lines.inspect,
+    });
   }
 
   // The overlay dropped the pet back into the panel at screen x: continue from there.

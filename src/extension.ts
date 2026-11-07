@@ -9,7 +9,12 @@ type ToWebview =
   | { type: 'reset' }
   | { type: 'replay' }
   | { type: 'getHeist'; id: number }
-  | { type: 'petAway'; away: boolean; landX?: number };
+  | { type: 'petAway'; away: boolean; landX?: number }
+  | { type: 'inspectDone'; landX?: number }
+  | { type: 'rageQuit' }
+  | { type: 'restored' }
+  | { type: 'codeReady'; ready: boolean }
+  | { type: 'submitResult'; ok: boolean };
 
 type HeistConfig = {
   line: string;
@@ -23,10 +28,25 @@ type HeistConfig = {
 type FromWebview =
   | { type: 'stage'; stage: string }
   | { type: 'log'; text: string }
-  | ({ type: 'heist'; id: number } & HeistReply);
+  | ({ type: 'heist'; id: number } & HeistReply)
+  | InspectRequest
+  | { type: 'restoreCode' }
+  | { type: 'submitCode' };
 
-/** Where the pet is in the panel, in screen coordinates (null until the user has touched the panel). */
-type HeistPanel = { petX: number; groundY: number; minX: number; maxX: number } | null;
+/** Where the pet / panel is, in screen coordinates (null until the user has touched the panel). */
+type PanelRect = { petX: number; groundY: number; minX: number; maxX: number; left: number; top: number; width: number };
+type HeistPanel = PanelRect | null;
+
+/** Eyes stage: the pet floats out over the code. */
+type InspectRequest = {
+  type: 'inspect';
+  png: string;
+  panel: PanelRect;
+  margin: number;
+  endScale: number;
+  lines: string[];
+  inspect: { editorTop: number; gutter: number; charWidth: number; lineHeight: number; speed: number; holdMs: number };
+};
 type HeistReply = { png: string; heist: HeistConfig; panel: HeistPanel; margin: number; endScale: number };
 
 class SidekickViewProvider implements vscode.WebviewViewProvider {
@@ -35,8 +55,10 @@ class SidekickViewProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private heistRequests = new Map<number, (r: HeistReply) => void>();
   private nextId = 1;
-  /** Current stage as reported by the webview. Used later for editor detection. */
+  /** Current stage as reported by the webview. Used for editor detection. */
   stage = 'character';
+  /** Messages the rest of the extension cares about (inspect, restoreCode, submitCode, stage). */
+  onMessage?: (msg: FromWebview) => void;
 
   constructor(private readonly extensionUri: vscode.Uri) {}
 
@@ -57,6 +79,7 @@ class SidekickViewProvider implements vscode.WebviewViewProvider {
         this.heistRequests.get(msg.id)?.(msg);
         this.heistRequests.delete(msg.id);
       }
+      this.onMessage?.(msg);
     });
   }
 
@@ -120,8 +143,8 @@ class SidekickViewProvider implements vscode.WebviewViewProvider {
     <div class="card-actions">
       <button id="btn-done" class="btn primary">Done</button>
       <button id="btn-clear" class="btn">Clear</button>
-      <button id="btn-tokens" class="btn hidden">Feed tokens</button>
     </div>
+    <button id="btn-submit" class="btn primary submit hidden">submit code</button>
   </aside>
 
   <div id="note" class="hidden"></div>
@@ -187,9 +210,53 @@ class Overlay {
     );
   }
 
+  /** Eyes stage: float over the code (box in screen coords), one roast line per stop, then back. */
+  tour(req: InspectRequest, code: { left: number; top: number; width: number; height: number }) {
+    this.start();
+    const b64 = (t: string) => Buffer.from(t, 'utf8').toString('base64');
+    const p = req.panel;
+    this.proc!.stdin.write(
+      [
+        'tour', req.margin, req.endScale, p.petX, p.groundY,
+        code.left, code.top, code.width, code.height,
+        p.left, p.left + p.width, p.top,
+        req.inspect.speed, req.inspect.holdMs,
+        req.lines.map(b64).join(','), req.png,
+      ].join('\t') + '\n'
+    );
+  }
+
   dispose() {
     this.proc?.kill();
   }
+}
+
+const DEMO_FILE = 'two_sum.py';
+const isDemoDoc = (doc: vscode.TextDocument) => path.basename(doc.fileName) === DEMO_FILE;
+const squash = (t: string) => t.replace(/\s+/g, '');
+/** The empty line under `if complement in seen:` has something on it now. */
+const hasAnswerLine = (t: string) => /if\s+complement\s+in\s+seen\s*:[ \t]*\r?\n[ \t]*\S/.test(t);
+/** Either order of the two indices is a correct Two Sum answer. */
+const isSolved = (t: string) =>
+  squash(t).includes('return[seen[complement],i]') || squash(t).includes('return[i,seen[complement]]');
+
+/** Where the code text is on screen, estimated from the panel (the editor sits right above it). */
+function codeBox(req: InspectRequest) {
+  const editor =
+    vscode.window.visibleTextEditors.find((e) => isDemoDoc(e.document)) ?? vscode.window.activeTextEditor;
+  const lines = (editor?.document.getText() ?? '').replace(/\t/g, '    ').split(/\r?\n/);
+  while (lines.length > 1 && !lines[lines.length - 1].trim()) lines.pop();
+  const cfg = vscode.workspace.getConfiguration('editor');
+  const fontSize = cfg.get<number>('fontSize', 14);
+  const lh = cfg.get<number>('lineHeight', 0);
+  const lineHeight = lh <= 0 ? fontSize * req.inspect.lineHeight : lh < 8 ? lh * fontSize : lh;
+  const maxLen = Math.max(20, ...lines.map((l) => l.length));
+  return {
+    left: req.panel.left + req.inspect.gutter,
+    top: req.inspect.editorTop, // from the window's top edge
+    width: maxLen * fontSize * req.inspect.charWidth,
+    height: Math.max(1, lines.length) * lineHeight,
+  };
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -206,30 +273,102 @@ export function activate(context: vscode.ExtensionContext) {
     heistRunning = false;
     provider.post({ type: 'petAway', away: false, landX });
   };
+  // Which overlay routine is running: the chat heist or the eyes-stage code inspection.
+  let overlayJob: 'heist' | 'inspect' | null = null;
+  let inspectSafety: NodeJS.Timeout | undefined;
   overlay.onLine((line) => {
     if (line === 'kick') vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar');
     else if (line.startsWith('done')) {
       // "done <screen x>": where it landed back in the panel
       const x = parseFloat(line.split(' ')[1]);
-      endHeist(Number.isFinite(x) ? x : undefined);
+      const landX = Number.isFinite(x) ? x : undefined;
+      if (overlayJob === 'inspect') {
+        clearTimeout(inspectSafety);
+        provider.post({ type: 'inspectDone', landX });
+      } else endHeist(landX);
+      overlayJob = null;
     }
   });
 
+  // ----- the story's editor side: inspection, rage-quit rescue, submit -----
+  let snapshot: string | undefined; // last version of two_sum.py that still had real code in it
+  let restoring = false;
+  let readyTimer: NodeJS.Timeout | undefined;
+  const demoDoc = () => vscode.workspace.textDocuments.find(isDemoDoc);
+
+  const sendCodeReady = () => {
+    const doc = demoDoc();
+    provider.post({ type: 'codeReady', ready: !!doc && hasAnswerLine(doc.getText()) });
+  };
+
+  provider.onMessage = async (msg) => {
+    if (msg.type === 'inspect') {
+      if (overlayJob) return;
+      overlayJob = 'inspect';
+      overlay.tour(msg, codeBox(msg));
+      // never leave the pet stranded outside its panel
+      inspectSafety = setTimeout(() => {
+        overlayJob = null;
+        provider.post({ type: 'inspectDone' });
+      }, 30000);
+    } else if (msg.type === 'restoreCode') {
+      const doc = demoDoc();
+      if (doc && snapshot) {
+        const edit = new vscode.WorkspaceEdit();
+        edit.replace(doc.uri, new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)), snapshot);
+        await vscode.workspace.applyEdit(edit);
+      }
+      restoring = false;
+      provider.post({ type: 'restored' });
+    } else if (msg.type === 'submitCode') {
+      const doc = demoDoc();
+      provider.post({ type: 'submitResult', ok: !!doc && isSolved(doc.getText()) });
+    } else if (msg.type === 'stage' && msg.stage === 'coding') {
+      sendCodeReady();
+    }
+  };
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeTextDocument((e) => {
+      if (!isDemoDoc(e.document) || e.contentChanges.length === 0) return;
+      const text = e.document.getText();
+      if (text.trim().length > 60) snapshot = text;
+      if (provider.stage !== 'coding' || restoring) return;
+      // you deleted (nearly) everything: rage quit
+      if (text.trim().length < 15 && snapshot) {
+        restoring = true;
+        provider.post({ type: 'rageQuit' });
+        return;
+      }
+      // once you stop typing, tell the webview whether there's an answer to submit
+      clearTimeout(readyTimer);
+      readyTimer = setTimeout(sendCodeReady, 1200);
+    }),
+  );
+  // the starting code counts as the first snapshot
+  const initial = demoDoc();
+  if (initial && initial.getText().trim().length > 60) snapshot = initial.getText();
+
   const chatHeist = async () => {
     await vscode.commands.executeCommand('workbench.action.chat.open');
-    if (heistRunning) return;
+    if (heistRunning || overlayJob) return;
     heistRunning = true;
+    overlayJob = 'heist';
     const req = await provider.requestHeist();
     if (!req) {
       log.appendLine('heist: webview did not answer');
       heistRunning = false;
+      overlayJob = null;
       return;
     }
     // Let the chat finish opening so the pet visibly "notices" it.
     await new Promise((r) => setTimeout(r, 500));
     provider.post({ type: 'petAway', away: true });
     overlay.heist(req);
-    heistSafety = setTimeout(() => endHeist(), 12000); // never leave the pet stranded
+    heistSafety = setTimeout(() => {
+      overlayJob = null;
+      endHeist();
+    }, 12000); // never leave the pet stranded
   };
 
   context.subscriptions.push(
