@@ -32,6 +32,35 @@
     state.stage = stage;
     vscode.postMessage({ type: 'stage', stage });
     render();
+    enterStage(stage);
+  }
+
+  // What happens when a story stage starts (also when skipped to with Ctrl+Alt+N).
+  function enterStage(stage) {
+    const L = T.lines;
+    if (stage === 'eyes') {
+      // still ranting (mouth stage) — keep it going until the eyes are drawn
+      if (!window.Speech.busy()) rantOn();
+    } else if (stage === 'inspect') {
+      walker.mode = 'idle';
+      window.Speech.say(L.eyes, startInspect); // "…oh. so THIS is what you look like", then off to the code
+    } else if (stage === 'highFive') {
+      state.codeReady = false;
+      window.Speech.say(L.goodJob, () => {
+        walker.highFive();
+        setNote(T.notes.highFive);
+      });
+    }
+  }
+
+  // Mouth stage rant: after the main rant, it keeps going with one loop line at a time.
+  let rantIndex = 0;
+  function rantOn() {
+    later(CFG.timing.rantPauseMs, () => {
+      if (state.stage !== 'eyes') return;
+      const loop = T.lines.mouthLoop;
+      window.Speech.say([loop[rantIndex++ % loop.length]], rantOn);
+    });
   }
 
   function next() {
@@ -41,6 +70,8 @@
 
   function reset() {
     state.parts = {};
+    state.codeReady = false;
+    state.petAway = false;
     state.petX = null;
     state.bodyAngle = 0;
     resetRoll();
@@ -59,9 +90,10 @@
     else if (s === 'sprite') renderSprite();
 
     card.classList.toggle('hidden', ONBOARDING.includes(s));
-    const tokensVisible = ['roasted', 'tokens', 'pointing'].includes(s);
-    $('btn-tokens').classList.toggle('hidden', !tokensVisible);
-    showNote();
+    $('btn-submit').classList.toggle('hidden', !(s === 'coding' && state.codeReady));
+    // the highFive note only appears once it actually asks for the high five
+    if (s === 'highFive') setNote(null);
+    else showNote();
   }
 
   // ---------------------------------------------------------------------------
@@ -274,7 +306,7 @@
     if (part === 'body') resetRoll(); // start rolling from the middle
     if (part === 'leg1') resetHop();
     if (part === 'leg2') walker.reset({ x: hop.cx, angle: hop.angle }); // gets up by itself, then walks
-    if (part === 'mouth') window.Speech.say(T.lines.mouth); // first words
+    if (part === 'mouth') window.Speech.say(T.lines.mouth, rantOn); // first words: an existential rant
     clearPad();
     Sound.pop(true);
     next();
@@ -282,9 +314,7 @@
 
   $('btn-done').addEventListener('click', () => submitDrawing(strokes));
   $('btn-clear').addEventListener('click', clearPad);
-  $('btn-tokens').addEventListener('click', () => {
-    // Phase 6: fake usage-limit modal.
-  });
+  $('btn-submit').addEventListener('click', () => vscode.postMessage({ type: 'submitCode' }));
 
   // ---------------------------------------------------------------------------
   // Stage rendering (one canvas, requestAnimationFrame)
@@ -351,6 +381,13 @@
 
   // Static placement of drawn parts (Phase 3). Animation comes in Phase 4.
   // Draws the pet standing on (cx, groundY) with body radius r.
+  const blink = { until: 0, next: 0 };
+  function updateBlink(now) {
+    if (now < blink.next) return;
+    blink.until = now + 120;
+    blink.next = now + 1800 + Math.random() * 3500;
+  }
+
   // legPose (optional): { a1, a2 } leg angles around the hips, { lift1, lift2 } foot lift.
   function drawPet(c, cx, groundY, r, P = state.parts, legPose = null) {
     const strokeWidth = CFG.pet.strokeWidth * (r / CFG.pet.bodyRadius);
@@ -391,7 +428,17 @@
         c.restore();
       } else place(P.mouth, mx, my, r * 0.4, 'center', ink);
     }
-    if (P.eyes) place(P.eyes, cx + r * 0.3, cy - r * 0.3, r * 0.5, 'center', ink);
+    if (P.eyes) {
+      // blinks every few seconds (squashed flat for a moment)
+      const ex = cx + r * 0.3, ey = cy - r * 0.3;
+      if (c === ctx && performance.now() < blink.until) {
+        c.save();
+        c.translate(ex, ey);
+        c.scale(1, 0.12);
+        place(P.eyes, 0, 0, r * 0.5, 'center', ink);
+        c.restore();
+      } else place(P.eyes, ex, ey, r * 0.5, 'center', ink);
+    }
   }
 
   // Clumsy rolling with real-ish physics. The body pivots about whichever point
@@ -723,6 +770,7 @@
   stage.addEventListener('pointerdown', (e) => {
     if (ONBOARDING.includes(state.stage) || state.petAway) return;
     if (!pokeHit(e.offsetX, e.offsetY)) return;
+    if (state.stage === 'highFive' && walker.phase === 'highFive') return highFive();
     stage.setPointerCapture(e.pointerId);
     poke.dragging = true;
     poke.pointerId = e.pointerId;
@@ -753,6 +801,14 @@
   stage.addEventListener('pointerup', endPoke);
   stage.addEventListener('pointercancel', endPoke);
 
+  // You high-fived it. It can't take it: falls over, stays down, bitter.
+  function highFive() {
+    Sound.pop(true);
+    walker.knockOver();
+    goTo('done');
+    later(1400, () => window.Speech.say(T.lines.bitter));
+  }
+
   // Rotates whatever drawFn() draws around (pivotX, pivotY) by the current poke tilt.
   function drawWithPoke(drawFn, pivotX, pivotY) {
     if (!poke.tilt) return drawFn();
@@ -766,7 +822,7 @@
 
   // Two legs: walking (walk.js).
   const walker = window.createWalker({ CFG, state, normalize, drawPet });
-  const walking = () => state.parts.leg2 && !state.parts.mouth;
+  const walking = () => !!state.parts.leg2; // walker draws it from now on (walks, or stands while talking)
 
   let lastFrameT = null;
   function frame(t) {
@@ -821,8 +877,11 @@
           drawWithPoke(() => drawHop(ctx, groundY - poke.lift), hop.cx, groundY);
           state.petX = hop.footX;
         } else if (walking()) {
-          // Two legs, no mouth yet: walks around (blind). Picked up: legs kick in the air.
+          // Two legs: walks around (blind) until it has a mouth, then stands and talks.
+          // Picked up: legs kick in the air.
           const r = CFG.pet.bodyRadius;
+          if (state.parts.mouth && walker.phase !== 'highFive') walker.mode = 'idle';
+          updateBlink(performance.now());
           if (poke.dragging) walker.drag(poke.targetX ?? walker.x, t);
           else walker.update(dt, 24 + r, Math.max(24 + r, cardLeft - r - 12));
           petScreenX = walker.x;
@@ -842,7 +901,8 @@
         const r = CFG.pet.bodyRadius;
         const px = state.petX ?? cardLeft / 2;
         const mouthY = groundY - r * 1.1 - r + r * 0.15;
-        window.Speech.draw(ctx, t, px + r * 0.55, mouthY, cardLeft, cssVar('--bubble-ink'), cssVar('--bubble-bg'));
+        const facing = walking() ? walker.dir : 1; // mouth is on the side it faces
+        window.Speech.draw(ctx, t, px + facing * r * 0.55, mouthY, cardLeft, cssVar('--bubble-ink'), cssVar('--bubble-bg'));
       }
     }
     requestAnimationFrame(frame);
@@ -898,6 +958,23 @@
     } else if (msg.type === 'petAway') {
       if (!msg.away) landPetAt(msg.landX);
       state.petAway = msg.away;
+    } else if (msg.type === 'inspectDone') {
+      landPetAt(msg.landX);
+      state.petAway = false;
+      goTo('coding');
+      window.Speech.say(T.lines.inspectDone);
+    } else if (msg.type === 'rageQuit') {
+      // you deleted everything: it talks you out of it and pastes the code back
+      if (state.stage !== 'coding') return;
+      window.Speech.say(T.lines.dontGiveUp, () => vscode.postMessage({ type: 'restoreCode' }));
+    } else if (msg.type === 'restored') {
+      later(CFG.timing.hintDelayMs, () => window.Speech.say(T.lines.hint));
+    } else if (msg.type === 'codeReady') {
+      state.codeReady = msg.ready;
+      render();
+    } else if (msg.type === 'submitResult') {
+      if (msg.ok) goTo('highFive');
+      else window.Speech.say([...T.lines.wrong, ...T.lines.hint]);
     } else if (msg.type === 'replay') {
       // Phase 8: submit recorded strokes for the current part.
       vscode.postMessage({ type: 'log', text: 'replay not implemented yet' });
@@ -927,7 +1004,26 @@
       groundY: screenOffset.y + stageSize.height - CFG.pet.groundOffset,
       minX: screenOffset.x + 24 + r,
       maxX: screenOffset.x + cardLeft - r - 12,
+      left: screenOffset.x,
+      top: screenOffset.y,
+      width: stageSize.width,
     };
+  }
+
+  // The editor sits right above the panel, so the panel's screen rect tells the overlay where the code is.
+  function startInspect() {
+    const panel = heistPanel();
+    if (!panel) {
+      // never touched the panel, so we don't know where it is on screen: skip the trip
+      goTo('coding');
+      window.Speech.say(T.lines.inspectDone);
+      return;
+    }
+    state.petAway = true;
+    vscode.postMessage({
+      type: 'inspect', png: petPng(), panel, margin: PNG_MARGIN, endScale: 1 / CFG.heist.petScale,
+      inspect: CFG.inspect, lines: T.lines.inspect,
+    });
   }
 
   // The overlay dropped the pet back into the panel at screen x: continue from there.

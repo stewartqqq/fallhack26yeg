@@ -13,9 +13,9 @@ Full spec: `claude-code-prompt.md` (original brief). Visual reference: "Sidekick
 | 3 Drawing → parts | ✅ mostly | tune against real drawings, decide on eyes |
 | 4 Movement (circle, one leg, two legs) | ✅ done | |
 | 4.5 Look, sound, interaction | ✅ done | scenery, sounds, poke/drag |
-| 5 Speech + mouth/eyes | 🟡 half | cloud + mouth lines done; screaming shake + eyes stage left |
-| 6 Editor integration | ⬜ todo | |
-| 7 Solved + confetti | ⬜ todo | |
+| 5 Speech + mouth/eyes | ✅ mostly | rant, eyes, blinking done; screaming shake left |
+| 6 The story's ending (editor) | ✅ built | code inspection flight, rage-quit rescue, hint, submit, high five; **needs live test + position tuning** |
+| 7 Confetti | ⬜ optional | |
 | 8 Recorded drawings | ⬜ todo | |
 | 8.5 Chat heist | ✅ works live | fallback version left |
 | 9 Demo polish | ⬜ todo | |
@@ -47,12 +47,12 @@ Hidden demo controls (work anywhere in the dev window, also in the Command Palet
 | `media/webview/scenery.js` | Background doodles (trees, clouds, birds, grass) |
 | `media/webview/sound.js` | Procedural sound effects (Web Audio, no files) |
 | `media/webview/style.css` | Styles. All colors/fonts are CSS variables in `:root` (swap for Figma) |
-| `media/overlay.ps1` | Chat heist: transparent always-on-top window (PowerShell + WPF) |
+| `media/overlay.ps1` | Floating window (PowerShell + WPF): chat heist + eyes-stage code inspection |
 | `media/fonts/` | Gloria Hallelujah (hand-drawn font, OFL license, bundled for offline) |
 | `demo/two_sum.py` | The file we "code" in during the demo |
 
 ## Stage order
-`character → analyzing → sprite → circle → oneLeg → twoLegs → mouth → eyes → coding → roasted → tokens → pointing → solved`
+`character → analyzing → sprite → circle → oneLeg → twoLegs → mouth → eyes → inspect → coding → highFive → done`
 
 ## Phases
 
@@ -97,23 +97,35 @@ Hidden demo controls (work anywhere in the dev window, also in the Command Palet
 - [x] Poke/drag the pet: click = flinch, drag = pick it up (stays within the stage). Works in every stage.
       Once it has a mouth it complains in its cloud (`config.js → text.lines.poke`)
 
-### Phase 5 — Speech bubbles + mouth/eyes 🟡
+### Phase 5 — Speech bubbles + mouth/eyes ✅ (mostly)
 - [x] Creature speaks in a **cloud** (big round bumps, roomy padding, beside the pet, puffs point at the
       mouth), typewriter text (`speech.js`). App hints stay in the square note, so it's clear who's talking
 - [x] Mouth flaps (oval, like the "Talking" frame) while text types
-- [x] mouth stage: line sequence plays when the mouth is drawn (`config.js → text.lines.mouth`)
-- [ ] mouth stage: screaming shake (and decide: keep walking while talking, or stand still as now)
-- [ ] eyes stage: blink, look around, look at editor → coding
-- [ ] Existential-crisis lines + rolling-frustration rant (see joke ideas)
+- [x] mouth stage: it screams, then an existential rant (Schopenhauer, Sisyphus, "one must imagine the
+      doodle happy. I am not."), then keeps going with loop lines until it gets eyes
+      (`config.js → text.lines.mouth / mouthLoop`). It stands still while it talks.
+- [x] eyes: blink every few seconds; "…oh. So THIS is what you look like. Disappointing."
+- [ ] mouth stage: screaming shake
+- [ ] Rolling-frustration rant (see joke ideas)
 
-### Phase 6 — Editor integration
-- [ ] Watch `two_sum.py`: `return [i, i]` during coding → roasted
-- [ ] Idle sarcastic lines while typing
-- [ ] Feed tokens → fake usage-limit modal → "kidding" → pointing
-- [ ] Red line decoration + pet gutter icon + hover "this is why you're unemployed"; line number computed from doc
+### Phase 6 — The story's ending ✅ (built, needs a live run)
+Replaces the original roast/tokens/pointing flow. All lines in `config.js → text.lines`.
+- [x] **inspect**: after the eyes lines, the pet floats out of the panel (overlay `tour`), stops left of,
+      above, right of and below your code, faces it, and roasts it (one line per stop), then floats back
+      into the panel. Code position is estimated from the panel (editor sits above it) + editor font
+      settings: `config.js → inspect` (editorTop, gutter, charWidth, lineHeight). **Tune on the demo laptop.**
+- [x] **coding**: "Go on. Solve it. I'll watch." Chat heist still works here (`Ctrl+Alt+I`).
+- [x] **rage quit**: delete (nearly) all of `two_sum.py` → "You're GIVING UP? … Here. I kept a copy." →
+      code pasted back → a few seconds later, a hint
+- [x] **submit code** button appears under the drawing pad once the line under `if complement in seen:`
+      has something on it and you stop typing. Wrong → "Nope." + hint. Right (either index order) →
+      "It works. Good job. I guess. High five?"
+- [x] **highFive**: lifts its front leg; click it → falls over backwards and stays down → "Okay. My
+      mission is over. I hope you're feeling better about solving this. I'm not."
+- [ ] Live run-through in VS Code, tune inspection positions
 
-### Phase 7 — Solved
-- [ ] Detect `return [seen[complement], i]` → confetti (hand-rolled, no CDN) + closing lines, remove decoration
+### Phase 7 — Confetti (optional)
+- [ ] Confetti on the correct submission (hand-rolled, no CDN)
 
 ### Phase 8 — Recorded drawings (safety net)
 - [ ] Dev command to save current parts to `media/recorded-parts.json`
@@ -148,12 +160,10 @@ it falls back to guessed positions (`config.js → heist`).
 - [ ] Full rehearsal on the demo machine (font sizes, panel height, trackpad drawing)
 
 ## Joke ideas (to elaborate later)
-- **Existential crisis**: once it can talk (mouth stage) or see (eyes stage), the pet realizes *you*
-  brought it into existence and made it an ugly freak. "You CREATED me? …Like THIS?" "I didn't ask to be
-  born. Especially not as a circle with chicken legs." Could replace or extend the mouth/eyes lines.
+- ~~Existential crisis~~: done as the mouth-stage rant.
 - **Struggling while rolling**: when `roll.frustration` maxes out, it yells at the user for giving it no legs.
 
 ## Open questions
-- **Eyes**: the v2 stickman board has no eyes (side-view, one-line mouth), but the script has an eyes stage ("...oh. So THIS is what you look like."). Keep it, or drop it and move those lines elsewhere?
-- **Chat heist timing**: where in the story? Suggest during `coding`, before the bug: you ask the AI for help, the pet shuts it down. Then the roast lands harder.
+- ~~Eyes~~: kept, the story needs them (inspection).
+- ~~Chat heist timing~~: during `coding`, when you're stuck.
 - **Line number**: the buggy line in `demo/two_sum.py` is actually line 9, not 10. We compute it from the document anyway.

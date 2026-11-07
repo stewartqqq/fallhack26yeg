@@ -8,19 +8,29 @@ window.Speech = (function () {
   let line = null; // { text, start }
   let lastT = 0;
 
-  function say(lines) {
+  let onDone = null;
+
+  /** Say these lines one after another; onDone runs after the last one has been shown. */
+  function say(lines, done = null) {
     queue = lines.slice();
     line = null;
+    onDone = done;
     startNext(lastT);
   }
 
   function clear() {
     queue = [];
     line = null;
+    onDone = null;
   }
 
   function startNext(t) {
     line = queue.length ? { text: queue.shift(), start: t } : null;
+    if (!line && onDone) {
+      const fn = onDone;
+      onDone = null;
+      fn();
+    }
   }
 
   function shown(t) {

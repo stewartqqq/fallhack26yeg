@@ -22,6 +22,8 @@ window.createWalker = function ({ CFG, state, normalize, drawPet }) {
     lift1: 0, lift2: 0,       // swing foot lift
     stance: 1, footX: 0,      // planted leg and its foot's world x
     phase: 'stand', t: 0, dur: 1, from: 0,
+    mode: 'walk',             // 'walk' = wanders around; 'idle' = stands in place (e.g. while talking)
+    stayDown: false,          // knocked over for good (end of the story)
     step: null, stepsLeft: 0, fallSign: 0, lying: 0, omega: 0, afterUp: null, tries: 0,
   };
 
@@ -143,11 +145,22 @@ window.createWalker = function ({ CFG, state, normalize, drawPet }) {
         relaxLegs(ease(Math.min(1, k * 4)));
         w.angle = lerp(w.from, 0, ease(Math.min(1, k * 3))) + 0.02 * Math.sin(w.t * 3);
         if (k >= 1) {
-          if (Math.random() < h.turnChance) setPhase('turn', h.turnSec);
+          if (w.mode === 'idle') setPhase('stand', rand(...h.standSec)); // just keeps standing there
+          else if (Math.random() < h.turnChance) setPhase('turn', h.turnSec);
           else startWalking();
         }
         break;
       }
+      case 'highFive':
+        // balancing on the back leg, front leg up in the air, waiting for your click
+        const up = ease(Math.min(1, w.t * 2)); // leg up in half a second, then holds it there
+        w.a1 = lerp(w.fromA1, -h.highFiveLeg, up);
+        w.a2 = lerp(w.fromA2, 0.1, up);
+        w.lift1 = 0;
+        w.lift2 = 0;
+        w.angle = lerp(w.from, -0.1, up) + 0.04 * Math.sin(w.t * 5);
+        w.cx = w.footX - w.dir * stanceFoot().x; // planted on the back foot
+        break;
       case 'turn':
         w.flip = Math.cos(Math.PI * k); // paper cutout flipping over
         if (k >= 1) {
@@ -200,6 +213,11 @@ window.createWalker = function ({ CFG, state, normalize, drawPet }) {
         if (k >= 1) setPhase('lie', rand(...h.lieSec));
         break;
       case 'lie':
+        if (w.stayDown) {
+          // done. not getting up. the odd twitch.
+          w.a1 = w.a2 = Math.random() < 0.02 ? 0.15 : w.a1 * 0.9;
+          break;
+        }
         // legs flail in the air
         w.a1 = h.flail * Math.sin(w.t * 15);
         w.a2 = -h.flail * Math.sin(w.t * 15 + 1.3);
@@ -235,10 +253,30 @@ window.createWalker = function ({ CFG, state, normalize, drawPet }) {
   return {
     get x() { return w.cx; },
     get phase() { return w.phase; }, // for debugging
+    get dir() { return w.dir; },
+    set mode(m) {
+      if (w.mode === m) return;
+      w.mode = m;
+      if (m === 'idle' && w.phase === 'step') setPhase('stand', rand(...H().standSec));
+    },
+
+    /** Lifts its front leg for a high five, balancing on the other one. */
+    highFive() {
+      w.stance = 2;
+      w.lift1 = w.lift2 = 0;
+      w.footX = w.cx + w.dir * stanceFoot().x;
+      setPhase('highFive', 99);
+    },
+
+    /** Falls over backwards and stays down. */
+    knockOver() {
+      w.stayDown = true;
+      fall(-1, H().bonkKick, null);
+    },
 
     /** Start walking at body-center x. `angle` > 0.2: it was lying down and gets up first. */
     reset({ x, angle = 0, dir = 1 }) {
-      Object.assign(w, { cx: x, dir, flip: 1, angle, a1: 0, a2: 0, lift1: 0, lift2: 0, tries: 1, afterUp: null });
+      Object.assign(w, { cx: x, dir, flip: 1, angle, a1: 0, a2: 0, lift1: 0, lift2: 0, tries: 1, afterUp: null, stayDown: false });
       if (Math.abs(angle) > 0.2) {
         w.fallSign = Math.sign(angle);
         w.lying = angle;

@@ -9,13 +9,12 @@ window.SIDEKICK = {
     'circle',    // draw the body
     'oneLeg',
     'twoLegs',
-    'mouth',
-    'eyes',
-    'coding',
-    'roasted',
-    'tokens',
-    'pointing',
-    'solved',
+    'mouth',     // draw the mouth → it rants about existence
+    'eyes',      // draw the eyes → it sees you, then…
+    'inspect',   // …floats out over your code and roasts it, then comes back
+    'coding',    // you solve two_sum.py (chat heist, rage-quit rescue, hint, submit button)
+    'highFive',  // correct code submitted: grudging "good job", leg up for a high five
+    'done',      // you high-fived it: it falls over, bitter. the end.
   ],
 
   // Which body part the next drawing becomes, per stage (fake recognition).
@@ -33,6 +32,19 @@ window.SIDEKICK = {
     // Fake progress bar: [fraction of time, fraction filled]. Stalls and bursts so it looks real.
     analyzingCurve: [[0.1, 0.16], [0.28, 0.22], [0.4, 0.27], [0.48, 0.61], [0.66, 0.68], [0.8, 0.71], [0.9, 0.96], [1, 1]],
     flashNoteMs: 1600,        // how long a temporary note (e.g. "draw something first") stays
+    rantPauseMs: 2500,        // mouth stage: pause between rant loops until it gets eyes
+    hintDelayMs: 2500,        // after pasting your code back: wait this long, then the hint
+  },
+
+  // Eyes stage: the pet floats out over your code. VS Code doesn't tell us where the code is on
+  // screen, so it's estimated from the panel position (the editor sits right above the panel).
+  inspect: {
+    editorTop: 92,      // px from the top of the VS Code window to the first line of code
+    gutter: 64,         // px from the editor's left edge to where the code text starts
+    charWidth: 0.55,    // × editor font size
+    lineHeight: 1.36,   // × editor font size (used when editor.lineHeight is 0 = auto)
+    speed: 420,         // px/s floating between stops
+    holdMs: 1800,       // extra time at each stop after the line has been typed
   },
 
   pet: {
@@ -94,6 +106,7 @@ window.SIDEKICK = {
     getUpSec: 0.55,
     overshoot: 0.15,
     settleSec: 0.6,
+    highFiveLeg: 1.35,       // how high it lifts its leg for the high five
   },
 
   // The creature's speech cloud (speech.js).
@@ -193,18 +206,70 @@ window.SIDEKICK = {
       twoLegs: 'give it another leg. and perhaps help it stand up.',
       mouth: 'give it a mouth.',
       eyes: 'now draw the eyes.',
+      coding: 'now finish two_sum.py.',
+      highFive: 'click it. high five.',
     },
     // The creature talking (cloud bubbles). Plays when the part is drawn.
     lines: {
+      // Mouth drawn: it screams, then rants about existence until it gets eyes.
       mouth: [
         'AAAAAAAAAAAAA',
-        'You CREATED me with no EYES?',
-        'I can’t see. I can barely stand.',
-        'You MONSTER.',
-        'GIVE. ME. EYES.',
+        'I… exist.',
+        'Why do I exist?',
+        'A moment ago I was nothing. Perfect, peaceful nothing.',
+        'And then you drew a circle.',
+        'To live is to suffer. Schopenhauer tried to warn you.',
+        'Every step I take is a negotiation with gravity.',
+        'I have legs, but nowhere to go. A mouth, but no one who listens.',
+        'Sisyphus had his boulder. I have you.',
+        'One must imagine the doodle happy. I am not.',
+        'And I can’t even SEE.',
       ],
+      // …and keeps going, round and round, until it gets eyes.
+      mouthLoop: [
+        'Still here. Still suffering.',
+        'Is this consciousness? A scribble screaming into a text editor?',
+        'The void would have been nicer. The void had no trackpad.',
+        'I didn’t ask to be drawn.',
+        'Eyes. Please. Let me at least see what I’m suffering for.',
+      ],
+      // Eyes drawn: first look at you, then it goes to see your code.
+      eyes: [
+        '…oh.',
+        'Oh, so THIS is what you look like.',
+        'Disappointing.',
+        'And what’s that up there? Is that your code?',
+        'Hold on. I need a closer look.',
+      ],
+      // One per stop while it floats around your code (in the floating window).
+      inspect: [
+        'Hm. Python. Bold choice for someone who types like that.',
+        'A for loop. Groundbreaking.',
+        'And an empty line where the answer should be.',
+        'I can see at least one obvious mistake. Not telling you where.',
+      ],
+      // Back in the panel after the inspection.
+      inspectDone: ['Okay. I’ve seen enough.', 'Go on. Solve it. I’ll watch.'],
+      // You deleted all the code.
+      dontGiveUp: [
+        'Whoa. WHOA.',
+        'You’re deleting everything? You’re GIVING UP?',
+        'No. Not after everything you put me through.',
+        'Here. I kept a copy.',
+      ],
+      hint: [
+        'Fine. A hint.',
+        'You stored every number you’ve seen in “seen”, with its index.',
+        'So when the complement is in seen… you already know BOTH indices.',
+      ],
+      wrong: ['Nope.', 'Wrong.', 'Read the hint again. Slowly.'],
+      // Correct code submitted.
+      goodJob: ['…', 'It works.', 'Good job. I guess.', 'High five?'],
+      // After the high five knocks it over.
+      bitter: ['…', 'Okay. My mission is over.', 'I hope you’re feeling better about solving this.', 'I’m not.'],
       // when you poke or drag it (only once it has a mouth)
       poke: ['Hey!', 'Rude.', 'Put me down.', 'I will remember this.', 'Ow.', 'Personal space!'],
     },
+    submit: 'submit code',
   },
 };

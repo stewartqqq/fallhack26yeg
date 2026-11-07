@@ -4,6 +4,10 @@
 #   in : heist <TAB> line <TAB> startXFrac <TAB> startYFromBottom <TAB> chatXFromRight <TAB> chatYFrac
 #              <TAB> hasPanel <TAB> petX <TAB> groundY <TAB> minX <TAB> maxX   (panel position, screen DIPs)
 #              <TAB> margin <TAB> endScale <TAB> base64 png
+#   in : tour <TAB> margin <TAB> endScale <TAB> petX <TAB> groundY <TAB> codeLeft <TAB> codeTop (from window top)
+#             <TAB> codeW <TAB> codeH <TAB> boundsLeft <TAB> boundsRight <TAB> boundsBottom <TAB> speed <TAB> holdMs
+#             <TAB> lines (base64 UTF-8, comma-separated) <TAB> base64 png
+#        (eyes stage: floats over the code, stops around it and roasts it, floats back)
 #   out: ready | kick (close the chat now) | done <screen x where it landed back in the panel>
 param([string]$FontDir)
 
@@ -53,6 +57,7 @@ public static class SidekickOverlay
     static Canvas canvas;
     static Image pet;
     static ScaleTransform petScale = new ScaleTransform(1, 1);
+    static ScaleTransform petFlip = new ScaleTransform(1, 1); // -1 = facing left
     static RotateTransform petRot = new RotateTransform(0);
     static Border bubble;
     static TextBlock bubbleText;
@@ -66,6 +71,9 @@ public static class SidekickOverlay
     static double px, py;
     // Displayed size relative to the overlay PNG (endScale = same size as the pet in the panel).
     static double size = 1, baseW, baseH, margin, landLeft;
+    // Floating (tour): gentle up/down bob on top of the path.
+    static double bob = 0;
+    static Stopwatch bobClock = Stopwatch.StartNew();
 
     public static void Run(string fontDir)
     {
@@ -85,6 +93,7 @@ public static class SidekickOverlay
 
         pet = new Image();
         var tg = new TransformGroup();
+        tg.Children.Add(petFlip);
         tg.Children.Add(petScale);
         tg.Children.Add(petRot);
         pet.RenderTransform = tg;
@@ -156,6 +165,141 @@ public static class SidekickOverlay
             try { Heist(f[1], Num(f[2]), Num(f[3]), Num(f[4]), Num(f[5]), f[6] == "1", Num(f[7]), Num(f[8]), Num(f[9]), Num(f[10]), Num(f[11]), Num(f[12]), f[13]); }
             catch (Exception e) { Console.Error.WriteLine(e.ToString()); Send("done"); }
         }
+        else if (f[0] == "tour" && f.Length >= 16)
+        {
+            try
+            {
+                var lines = new List<string>();
+                foreach (string b in f[14].Split(','))
+                    if (b.Length > 0) lines.Add(Encoding.UTF8.GetString(Convert.FromBase64String(b)));
+                Tour(Num(f[1]), Num(f[2]), Num(f[3]), Num(f[4]), Num(f[5]), Num(f[6]), Num(f[7]), Num(f[8]),
+                     Num(f[9]), Num(f[10]), Num(f[11]), Num(f[12]), Num(f[13]), lines, f[15]);
+            }
+            catch (Exception e) { Console.Error.WriteLine(e.ToString()); Send("done"); }
+        }
+    }
+
+    // Cover the VS Code window (it's in the foreground) and load the pet image.
+    static void Prepare(string png, double pngMargin)
+    {
+        RECT r;
+        IntPtr fg = GetForegroundWindow();
+        if (DwmGetWindowAttribute(fg, 9, out r, Marshal.SizeOf(typeof(RECT))) != 0) GetWindowRect(fg, out r);
+        Matrix toDip = PresentationSource.FromVisual(win).CompositionTarget.TransformFromDevice;
+        Point tl = toDip.Transform(new Point(r.Left, r.Top));
+        Point br = toDip.Transform(new Point(r.Right, r.Bottom));
+        win.Left = tl.X; win.Top = tl.Y;
+        win.Width = br.X - tl.X; win.Height = br.Y - tl.Y;
+        landLeft = win.Left;
+
+        var bmp = new BitmapImage();
+        bmp.BeginInit();
+        bmp.StreamSource = new MemoryStream(Convert.FromBase64String(png));
+        bmp.CacheOption = BitmapCacheOption.OnLoad;
+        bmp.EndInit();
+        pet.Source = bmp;
+        baseW = bmp.PixelWidth / 2.0;  // PNG is rendered at 2x
+        baseH = bmp.PixelHeight / 2.0;
+        margin = pngMargin;
+        petFlip.ScaleX = 1;
+        petRot.Angle = 0;
+        petScale.ScaleY = 1;
+    }
+
+    // Eyes stage: float out of the panel, visit a few spots around the code (looking at it and
+    // saying one roast line at each), then float back down into the panel.
+    static void Tour(double pngMargin, double endScale, double petX, double groundY, double codeLeft, double codeTop,
+                     double codeW, double codeH, double boundsLeft, double boundsRight, double boundsBottom,
+                     double speed, double holdMs, List<string> lines, string png)
+    {
+        Prepare(png, pngMargin);
+        double sx = petX - win.Left, sy = groundY - win.Top;    // pet's spot in the panel (feet)
+        double x0 = codeLeft - win.Left, y0 = codeTop;          // code box, window coordinates
+        double x1 = x0 + codeW, y1 = y0 + codeH;
+        double ccx = (x0 + x1) / 2;
+        double h = baseH - pngMargin;                            // pet height at full size
+        double minX = boundsLeft - win.Left + baseW / 2, maxX = boundsRight - win.Left - baseW / 2;
+        double minY = h + 40, maxY = boundsBottom - win.Top - 8;
+
+        // left of the code, above it, right of it, below it
+        var spots = new List<Point>();
+        spots.Add(new Point(x0 - baseW * 0.6, (y0 + y1) / 2 + h * 0.5));
+        spots.Add(new Point(ccx, y0 - 4));
+        spots.Add(new Point(x1 + baseW * 0.6, (y0 + y1) / 2 + h * 0.5));
+        spots.Add(new Point(ccx, y1 + h + 10));
+        double small = endScale;
+        px = sx; py = sy; size = small; bob = 0;
+
+        steps.Clear();
+        // lift off: squash, then float up out of the panel while growing to full size
+        Add(160, delegate { pet.Visibility = Visibility.Visible; }, delegate (double t) { petScale.ScaleY = 1 - 0.2 * Math.Sin(Math.PI * t); });
+        double riseY = Math.Max(minY, sy - 90);
+        Add(550, null, delegate (double t) {
+            double e = Ease(t);
+            py = Lerp(sy, riseY, e);
+            size = Lerp(small, 1, e);
+            bob = 6 * e;
+        });
+
+        double fromX = sx, fromY = riseY;
+        for (int i = 0; i < Math.Min(lines.Count, spots.Count); i++)
+        {
+            double tx = Math.Max(minX, Math.Min(maxX, spots[i].X));
+            double ty = Math.Max(minY, Math.Min(maxY, spots[i].Y));
+            FloatTo(fromX, fromY, tx, ty, speed);
+            string text = lines[i];
+            double typing = text.Length * 45.0;
+            double faceCode = ccx < tx ? -1 : 1;
+            // hover, look at the code, roast it
+            Add(typing + holdMs, delegate {
+                petFlip.ScaleX = faceCode;
+                bubbleText.Text = "";
+                bubble.Visibility = Visibility.Visible;
+            }, delegate (double t) {
+                int n = (int)Math.Ceiling(text.Length * Math.Min(1, t * (typing + holdMs) / typing));
+                bubbleText.Text = text.Substring(0, n);
+                petScale.ScaleY = n < text.Length ? 1 + 0.05 * Math.Sin(t * 60) : 1; // talking wobble
+            });
+            Add(10, delegate { bubble.Visibility = Visibility.Hidden; petScale.ScaleY = 1; }, null);
+            fromX = tx; fromY = ty;
+        }
+
+        // float back above its spot, then sink into the panel, shrinking back to panel size
+        double aboveY = Math.Max(minY, sy - 90);
+        FloatTo(fromX, fromY, sx, aboveY, speed);
+        Add(650, delegate { petFlip.ScaleX = 1; }, delegate (double t) {
+            double e = Ease(t);
+            py = Lerp(aboveY, sy, e);
+            size = Lerp(1, small, e);
+            bob = 6 * (1 - e);
+        });
+        Add(90, null, delegate (double t) { petScale.ScaleY = 1 - 0.25 * Math.Sin(Math.PI * t); });
+        Add(10, delegate {
+            pet.Visibility = Visibility.Hidden;
+            petRot.Angle = 0;
+            petScale.ScaleY = 1;
+            bob = 0;
+            py = sy;
+            win.Left = -20000; win.Top = -20000; win.Width = 10; win.Height = 10;
+            Send("done " + (landLeft + sx).ToString(CultureInfo.InvariantCulture));
+        }, null);
+
+        stepIndex = -1;
+        NextStep();
+    }
+
+    // Glide from one spot to another, leaning into the motion, facing where it's going.
+    static void FloatTo(double ax, double ay, double bx, double by, double speed)
+    {
+        double dist = Math.Sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+        double ms = Math.Max(600, Math.Min(1700, dist / speed * 1000));
+        double dir = bx >= ax ? 1 : -1;
+        Add(ms, delegate { petFlip.ScaleX = dir; }, delegate (double t) {
+            double e = Ease(t);
+            px = Lerp(ax, bx, e);
+            py = Lerp(ay, by, e);
+            petRot.Angle = 10 * dir * Math.Sin(Math.PI * t); // leans into it
+        });
     }
 
     static void Heist(string text, double startXFrac, double startYFromBottom, double chatXFromRight, double chatYFrac,
@@ -183,6 +327,8 @@ public static class SidekickOverlay
         baseW = bmp.PixelWidth / 2.0;  // PNG is rendered at 2x
         baseH = bmp.PixelHeight / 2.0;
         margin = pngMargin;
+        petFlip.ScaleX = 1;
+        bob = 0;
 
         // Start at the pet's real spot in the panel (feet on the panel's ground line), at
         // the panel pet's size. Without panel info, fall back to the configured guess.
@@ -320,13 +466,16 @@ public static class SidekickOverlay
         pet.Width = baseW * size;
         pet.Height = baseH * size;
         Canvas.SetLeft(pet, px - pet.Width / 2);
-        Canvas.SetTop(pet, py + margin * size - pet.Height); // feet on py
+        double bobY = bob * Math.Sin(bobClock.Elapsed.TotalSeconds * 3.2);
+        Canvas.SetTop(pet, py + bobY + margin * size - pet.Height); // feet on py
         if (bubble.Visibility == Visibility.Visible)
         {
             // bubble sits up-left of the pet, right edge anchored so typing grows leftwards
             bubble.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            Canvas.SetLeft(bubble, px - pet.Width / 2 - bubble.DesiredSize.Width + 10);
-            Canvas.SetTop(bubble, py - pet.Height - bubble.DesiredSize.Height + 10);
+            double bx = px - pet.Width / 2 - bubble.DesiredSize.Width + 10;
+            if (bx < 4) bx = px + pet.Width / 2 - 10; // no room on the left: put it on the right
+            Canvas.SetLeft(bubble, bx);
+            Canvas.SetTop(bubble, Math.Max(4, py - pet.Height - bubble.DesiredSize.Height + 10));
         }
     }
 }
